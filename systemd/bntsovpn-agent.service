@@ -1,0 +1,13 @@
+[Unit]
+Description=bntsovpn agent (pulls WireGuard config from control plane)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/bntsovpn agent
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
