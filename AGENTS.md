@@ -82,6 +82,9 @@ not replace the existing `bntsovpn` binary.
   system. Return contextual errors with node names and paths where useful.
 - Keep generated WireGuard output stable where possible; incidental changes
   trigger every agent to apply a new config.
+- Whenever configuration fields, defaults, validation, or behavior change,
+  update and verify the `bntsovpn init` generated template in the same change.
+  Keep every supported user-managed field and its current guidance represented.
 - Before finishing every change, check whether documentation or this
   `AGENTS.md` needs an update. Update the affected files in the same change;
   do not defer documentation work or leave instructions describing old behavior.

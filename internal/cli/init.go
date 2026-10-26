@@ -55,10 +55,15 @@ func templateFor(p netip.Prefix) string {
 	third := p.Addr().Next().Next().Next().String()
 	return fmt.Sprintf(`# bntsovpn configuration — user-managed, git-safe, no secrets.
 # Secrets (keys, token hashes, allocated addresses) live in state.yaml.
+# IPv6 recommendation: use a /64 from a private, randomly generated ULA /48.
+# Example allocation:
+#   organization: fd7a:3b9c:1a2b::/48
+#   this VPN:     fd7a:3b9c:1a2b::/64
+#   another VPN:  fd7a:3b9c:1a2b:1::/64
 name: bntso
-subnet: %s
-admin: home                    # node that runs `+"`bntsovpn serve`"+`
-api_port: %d                   # control plane port on the admin node's VPN IP (TCP)
+subnet: %s                  # IPv4 or IPv6 network; node addresses must use the same family
+admin: home                    # hub node that runs `+"`bntsovpn serve`"+`
+api_port: %d                   # control plane port on the admin node's VPN IP (TCP); default 51821
 # api_bind: 0.0.0.0            # what serve binds (host or host:port); empty = admin VPN IP + api_port
 # api_public: false            # opt-in: allow binding a wildcard/public address (e.g. api_bind 0.0.0.0).
 #                              # Safe-ish: config payloads are sealed to each node's WireGuard key and
@@ -69,13 +74,13 @@ api_port: %d                   # control plane port on the admin node's VPN IP (
 #                              # API is reached without the tunnel (recovery from broken configs).
 nodes:
   - name: home
-    role: hub
-    address: %s            # optional; omit to auto-allocate
-    endpoint: home.example.com:51820   # IP or DNS, port forwarded on the router
-    listen_port: 51820
-    # expose: [192.168.1.0/24]         # extra prefixes reachable via this node
-    # nat_iface: eth0                  # used for masquerade of v4 expose entries
-    # dns: 192.168.1.1                 # pushed into all node configs
+    role: hub                        # hub or spoke
+    address: %s                  # optional; omit to auto-allocate an address inside subnet
+    endpoint: home.example.com:51820 # hubs only; required, publicly reachable IP/DNS host:port
+    listen_port: 51820               # hubs only; default 51820
+    # expose: [192.168.1.0/24]       # hub prefixes reachable through the VPN
+    # nat_iface: eth0                # hubs with IPv4 expose entries; default eth0
+    # dns: 192.168.1.1               # admin node only; pushed into every node config
   # - name: linode1
   #   role: hub
   #   address: %s
@@ -83,7 +88,7 @@ nodes:
   # - name: phone
   #   role: spoke
   #   address: %s
-  #   via: home                        # primary hub: full routes
-  #   # backup: [linode1]              # backup hubs: host routes only
+  #   via: home                        # spokes only; primary hub with full routes
+  #   # backup: [linode1]              # spokes only; backup hubs with host routes only
 `, p, netconfig.DefaultAPIPort, addr, second, third)
 }
