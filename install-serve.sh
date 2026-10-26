@@ -59,7 +59,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "downloading ${ASSET} (latest release)..."
-download "${BASE}/${ASSET}" "${TMP}/bntsovpn"
+download "${BASE}/${ASSET}" "${TMP}/${ASSET}"
 
 if command -v sha256sum >/dev/null 2>&1; then
     download "${BASE}/checksums.txt" "${TMP}/checksums.txt"
@@ -70,7 +70,7 @@ if command -v sha256sum >/dev/null 2>&1; then
     echo "checksum verified"
 fi
 
-install -m 0755 "${TMP}/bntsovpn" "$BIN_PATH"
+install -m 0755 "${TMP}/${ASSET}" "$BIN_PATH"
 echo "installed ${BIN_PATH}"
 
 if [ "$RUN_INIT" = "1" ]; then

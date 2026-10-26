@@ -26,6 +26,7 @@ configuration while preserving the last-known-good live setup on failure.
 - `internal/invite`: gzip + base64 join blobs containing secrets.
 - `systemd`: service units and their embedded Go source.
 - `install-*.sh`: Linux amd64/arm64 release installers.
+- `installers_test.go`: non-destructive installer download, checksum, and corruption tests.
 - `dist`: generated release binaries and checksums; do not edit by hand.
 
 ## Build and verification
@@ -40,8 +41,8 @@ go vet ./...
 go build -o bntsovpn .
 ```
 
-There are currently no automated test files; `go test ./...` still compiles
-every package. For shell installer changes, also run `bash -n install-agent.sh
+For shell installer changes, update `installers_test.go` when the download,
+checksum, or install flow changes. Also run `bash -n install-agent.sh
 install-serve.sh` and exercise only non-destructive paths.
 
 Use `go build ./...` instead of the final command when a build check should
