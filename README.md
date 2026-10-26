@@ -55,6 +55,11 @@ bntsovpn status                      # mesh nodes; live handshake/traffic on a l
 After editing `config.yaml`, run `bntsovpn apply` again on the admin machine;
 agents pick up their new config on the next poll.
 
+Starting or restarting `bntsovpn-serve` recreates the admin machine's `wg0`
+from its rendered configuration, removing stale addresses, routes, peers, DNS,
+and hook state. This briefly interrupts the hub's VPN connections. Agent polls
+continue to update existing interfaces without recreating them.
+
 ## Build from source
 
 ```sh

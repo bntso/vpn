@@ -1,7 +1,7 @@
 // Interface lifecycle management via rtnetlink: create the kernel WireGuard
 // link, assign its address, reconcile routes, and run the PostUp/PostDown
-// hooks a rendered conf carries. This replaces wg-quick; the interface is
-// persistent kernel state and survives process restarts without flapping.
+// hooks a rendered conf carries. This replaces wg-quick; agents preserve the
+// persistent kernel interface across restarts, while serve recreates it on start.
 package device
 
 import (
@@ -177,6 +177,52 @@ func ApplyDNS(iface, dns string) (string, error) {
 		return "", fmt.Errorf("resolvconf -a %s: %v (%s)", iface, err, strings.TrimSpace(string(out)))
 	}
 	return "", nil
+}
+
+// RemoveDNS unregisters the interface's DNS server via resolvconf. When
+// resolvconf is not installed a note is returned for the caller to surface.
+func RemoveDNS(iface, dns string) (string, error) {
+	if dns == "" {
+		return "", nil
+	}
+	bin, err := exec.LookPath("resolvconf")
+	if err != nil {
+		return "resolvconf not installed — could not remove the interface's previous DNS registration", nil
+	}
+	cmd := exec.Command(bin, "-d", iface)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("resolvconf -d %s: %v (%s)", iface, err, strings.TrimSpace(string(out)))
+	}
+	return "", nil
+}
+
+// Recreate replaces an existing interface with a clean one built from confPath.
+// The previous configuration supplies PostDown and DNS cleanup. Cleanup happens
+// before deletion so a cleanup failure leaves the existing interface intact.
+func Recreate(iface, confPath string) error {
+	fc, err := ParseFile(confPath)
+	if err != nil {
+		return err
+	}
+	if !InterfaceExists(iface) {
+		return Up(iface, confPath, "")
+	}
+	if err := RunHooks(iface, fc.PostDown); err != nil {
+		return err
+	}
+	if note, err := RemoveDNS(iface, fc.DNS); err != nil {
+		return err
+	} else if note != "" {
+		fmt.Println("note:", note)
+	}
+	link, err := netlink.LinkByName(iface)
+	if err != nil {
+		return fmt.Errorf("lookup %s before recreate: %w", iface, err)
+	}
+	if err := netlink.LinkDel(link); err != nil {
+		return fmt.Errorf("delete %s before recreate: %w", iface, err)
+	}
+	return Up(iface, confPath, "")
 }
 
 // Up brings the interface fully up from a rendered conf file: create the link

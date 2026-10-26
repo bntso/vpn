@@ -65,18 +65,17 @@ func runServe(addrFlag string, allowPublicFlag bool) error {
 		addr = "0.0.0.0" + addr
 	}
 
-	// The kernel interface does not survive a reboot: when starting without
-	// it (e.g. bntsovpn-serve at boot), bring wg0 up from the rendered admin
-	// config. Best-effort — the freebind listener starts regardless and the
-	// next apply retries. oldConfPath == newConfPath, so hooks run only on
-	// interface creation (fresh NAT rules needed after boot).
-	if isRoot() && !device.InterfaceExists("wg0") {
+	// Recreate wg0 from the rendered admin config on every daemon start so
+	// addresses, routes, peers, and hooks left by an older configuration cannot
+	// survive a restart. Best-effort — the freebind listener starts regardless
+	// and the next apply retries.
+	if isRoot() {
 		conf := filepath.Join(renderedDir(), cfg.Admin+".conf")
 		if _, err := os.Stat(conf); err == nil {
-			if err := device.Up("wg0", conf, conf); err != nil {
-				fmt.Printf("warning: could not bring wg0 up from %s: %v\n", conf, err)
+			if err := device.Recreate("wg0", conf); err != nil {
+				fmt.Printf("warning: could not recreate wg0 from %s: %v\n", conf, err)
 			} else {
-				fmt.Println("brought wg0 up from the rendered admin config")
+				fmt.Println("recreated wg0 from the rendered admin config")
 			}
 		}
 	}

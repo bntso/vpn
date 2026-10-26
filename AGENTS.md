@@ -9,9 +9,11 @@ Go binary provides the admin control plane (`serve`) and node daemon (`agent`).
 It manages kernel WireGuard interfaces directly with netlink and wgctrl; it
 does not use `wg-quick`.
 
-The control plane renders per-node configuration. Agents poll with bearer
-tokens, unseal responses with their WireGuard private keys, and apply changed
-configuration while preserving the last-known-good live setup on failure.
+The control plane renders per-node configuration. On startup, `serve` recreates
+the admin WireGuard interface from its rendered configuration to remove stale
+kernel state. Agents poll with bearer tokens, unseal responses with their
+WireGuard private keys, and apply changed configuration while preserving the
+last-known-good live setup on failure.
 
 ## Repository layout
 
