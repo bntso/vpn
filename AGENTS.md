@@ -31,6 +31,7 @@ setup on failure.
 - `systemd`: service units and their embedded Go source.
 - `install-*.sh`: Linux amd64/arm64 release installers.
 - `installers_test.go`: non-destructive installer download, checksum, and corruption tests.
+- `.github/workflows/release.yml`: tests and builds every push, then publishes a `build-N` GitHub release.
 - `dist`: generated release binaries and checksums; do not edit by hand.
 
 ## Build and verification
