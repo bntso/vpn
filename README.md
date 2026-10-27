@@ -27,7 +27,21 @@ curl -fsSL https://raw.githubusercontent.com/bntso/vpn/main/install-agent.sh | s
 
 Both scripts detect the architecture (linux/amd64, linux/arm64), download the
 latest release binary, verify its SHA-256 checksum, and install it to
-`/usr/local/bin/bntsovpn`.
+`/usr/local/bin/bntsovpn`. They also install Bash completion to
+`/usr/share/bash-completion/completions/bntsovpn` on Ubuntu and Arch Linux.
+
+Install the Bash completion loader if it is not already present:
+
+```sh
+# Ubuntu
+sudo apt install bash-completion
+
+# Arch Linux
+sudo pacman -S bash-completion
+```
+
+Start a new shell to enable completion, or run
+`source /usr/share/bash-completion/completions/bntsovpn` in the current shell.
 
 ## Usage
 

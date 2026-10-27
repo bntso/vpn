@@ -17,6 +17,7 @@ set -euo pipefail
 
 REPO="bntso/vpn"
 BIN_PATH="/usr/local/bin/bntsovpn"
+COMPLETION_PATH="/usr/share/bash-completion/completions/bntsovpn"
 SELF_URL="https://raw.githubusercontent.com/${REPO}/main/install-serve.sh"
 RUN_INIT=0
 [ "${1:-}" = "--init" ] && RUN_INIT=1
@@ -70,8 +71,14 @@ if command -v sha256sum >/dev/null 2>&1; then
     echo "checksum verified"
 fi
 
+chmod 0755 "${TMP}/${ASSET}"
+"${TMP}/${ASSET}" completion bash > "${TMP}/bash-completion"
+
 install -m 0755 "${TMP}/${ASSET}" "$BIN_PATH"
 echo "installed ${BIN_PATH}"
+install -d "$(dirname "$COMPLETION_PATH")"
+install -m 0644 "${TMP}/bash-completion" "$COMPLETION_PATH"
+echo "installed ${COMPLETION_PATH}"
 
 if [ "$RUN_INIT" = "1" ]; then
     if [ -f /etc/bntsovpn/config.yaml ] && [ ! -f /etc/bntsovpn/config.hcl ]; then

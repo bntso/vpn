@@ -27,9 +27,16 @@ func TestInstallersVerifyDownloadedReleaseAsset(t *testing.T) {
 			}
 
 			const assetName = "bntsovpn-linux-amd64"
-			asset := []byte("release binary fixture")
+			const completion = "# bash completion fixture\ncomplete -F __start_bntsovpn bntsovpn\n"
+			asset := []byte(`#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "completion" ] && [ "${2:-}" = "bash" ]; then
+    cat <<'EOF'
+` + completion + `EOF
+fi
+`)
 			assetPath := filepath.Join(fixture, assetName)
-			if err := os.WriteFile(assetPath, asset, 0o644); err != nil {
+			if err := os.WriteFile(assetPath, asset, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			checksum := sha256.Sum256(asset)
@@ -54,7 +61,17 @@ fi
 `)
 			writeExecutable(t, binDir, "install", `#!/usr/bin/env bash
 set -euo pipefail
-cp "$3" "$FIXTURE/installed"
+if [ "${1:-}" = "-d" ]; then
+    exit 0
+fi
+source="${@: -2:1}"
+destination="${@: -1}"
+case "$destination" in
+    /usr/local/bin/bntsovpn) output="$FIXTURE/installed" ;;
+    /usr/share/bash-completion/completions/bntsovpn) output="$FIXTURE/bash-completion" ;;
+    *) printf 'unexpected install destination: %s\n' "$destination" >&2; exit 1 ;;
+esac
+cp "$source" "$output"
 `)
 
 			env := append(os.Environ(),
@@ -78,6 +95,13 @@ cp "$3" "$FIXTURE/installed"
 			}
 			if string(installed) != string(asset) {
 				t.Fatal("installer did not install the verified release asset")
+			}
+			installedCompletion, err := os.ReadFile(filepath.Join(fixture, "bash-completion"))
+			if err != nil {
+				t.Fatalf("read installed completion fixture: %v", err)
+			}
+			if string(installedCompletion) != completion {
+				t.Fatalf("installer did not install the generated Bash completion: got %q, want %q", installedCompletion, completion)
 			}
 
 			if err := os.Remove(filepath.Join(fixture, "installed")); err != nil {
