@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -68,7 +69,7 @@ func runServe(addrFlag string, allowPublicFlag bool) error {
 	// Recreate wg0 from the rendered admin config on every daemon start so
 	// addresses, routes, peers, and hooks left by an older configuration cannot
 	// survive a restart. Best-effort — the freebind listener starts regardless
-	// and the next apply retries.
+	// and the watchdog retries if the interface is missing.
 	if isRoot() {
 		conf := filepath.Join(renderedDir(), cfg.Admin+".conf")
 		if _, err := os.Stat(conf); err == nil {
@@ -77,10 +78,36 @@ func runServe(addrFlag string, allowPublicFlag bool) error {
 			} else {
 				fmt.Println("recreated wg0 from the rendered admin config")
 			}
+			go watchInterface("wg0", conf)
 		}
 	}
 
 	return server.Run(dir(), addr, allowPublicFlag || cfg.APIPublic)
+}
+
+func watchInterface(iface, conf string) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		restored, err := reconcileMissingInterface(iface, conf, device.InterfaceExists, device.Up)
+		if err != nil {
+			fmt.Printf("warning: could not restore %s from %s: %v\n", iface, conf, err)
+			continue
+		}
+		if restored {
+			fmt.Printf("restored missing %s from the rendered admin config\n", iface)
+		}
+	}
+}
+
+func reconcileMissingInterface(iface, conf string, exists func(string) bool, up func(string, string, string) error) (bool, error) {
+	if exists(iface) {
+		return false, nil
+	}
+	if err := up(iface, conf, conf); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // withDefaultPort appends :port when the bind string has no port.

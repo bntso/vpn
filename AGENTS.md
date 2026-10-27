@@ -11,7 +11,8 @@ does not use `wg-quick`.
 
 The control plane renders per-node configuration. On startup, `serve` recreates
 the admin WireGuard interface from its rendered configuration to remove stale
-kernel state. With `dns_domain` configured, it also serves private node/alias
+kernel state, then checks every 30 seconds and restores the interface if it
+disappears. With `dns_domain` configured, it also serves private node/alias
 DNS records on the admin VPN address and forwards other queries upstream.
 Agents poll with bearer tokens, unseal responses with their WireGuard private
 keys, and apply changed configuration while preserving the last-known-good live

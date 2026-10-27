@@ -176,8 +176,10 @@ YAML file is not loaded automatically.
 
 Starting or restarting `bntsovpn-serve` recreates the admin machine's `wg0`
 from its rendered configuration, removing stale addresses, routes, peers, DNS,
-and hook state. This briefly interrupts the hub's VPN connections. Agent polls
-continue to update existing interfaces without recreating them.
+and hook state. This briefly interrupts the hub's VPN connections. While running,
+`serve` checks every 30 seconds and restores `wg0` from the rendered configuration
+if the interface disappears. Agent polls continue to update existing interfaces
+without recreating them.
 
 ## Build from source
 
