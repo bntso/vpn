@@ -15,8 +15,10 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,7 +52,33 @@ func LoadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	cfg.API = normalizeAPI(cfg.API)
 	return &cfg, nil
+}
+
+func normalizeAPI(api string) string {
+	scheme, rest, ok := strings.Cut(api, "://")
+	if !ok {
+		return api
+	}
+	authority := rest
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		authority = rest[:i]
+	}
+	if strings.HasPrefix(authority, "[") || strings.Count(authority, ":") < 2 {
+		return api
+	}
+	i := strings.LastIndexByte(authority, ':')
+	host, port := authority[:i], authority[i+1:]
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return api
+	}
+	portNumber, err := strconv.ParseUint(port, 10, 16)
+	if err != nil {
+		return api
+	}
+	return scheme + "://" + netip.AddrPortFrom(addr, uint16(portNumber)).String() + rest[len(authority):]
 }
 
 // SaveConfig writes agent.yaml with mode 0600 (it contains the token).

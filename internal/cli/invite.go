@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/skip2/go-qrcode"
 	"github.com/spf13/cobra"
@@ -79,7 +81,7 @@ func runInvite(name string, qr bool) error {
 	}
 	apiAddr := cfg.APIURL
 	if apiAddr == "" {
-		apiAddr = fmt.Sprintf("http://%s:%d", adminState.Address, cfg.APIPort)
+		apiAddr = defaultAPIAddress(adminState.Address, cfg.APIPort)
 	}
 	blob, err := invite.Encode(&invite.Blob{
 		Node:       name,
@@ -96,6 +98,10 @@ func runInvite(name string, qr bool) error {
 	fmt.Fprintln(os.Stderr, "warning: this blob contains secrets (the node's WireGuard private key and its API token). Treat it like a password.")
 	fmt.Println(blob)
 	return nil
+}
+
+func defaultAPIAddress(address string, port int) string {
+	return "http://" + net.JoinHostPort(address, strconv.Itoa(port))
 }
 
 // renderedPath returns the on-disk rendered config path for a node.
