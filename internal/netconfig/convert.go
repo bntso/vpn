@@ -26,6 +26,7 @@ func renderHCL(cfg *Config) []byte {
 	body.SetAttributeValue("name", cty.StringVal(cfg.Name))
 	body.SetAttributeValue("subnet", cty.StringVal(cfg.Subnet))
 	body.SetAttributeValue("admin", cty.StringVal(cfg.Admin))
+	setOptionalString(body, "dns_domain", cfg.DNSDomain)
 	body.SetAttributeValue("api_port", cty.NumberIntVal(int64(cfg.APIPort)))
 	setOptionalString(body, "api_bind", cfg.APIBind)
 	if cfg.APIPublic {
@@ -46,6 +47,7 @@ func renderHCL(cfg *Config) []byte {
 		setOptionalStrings(nodeBody, "expose", node.Expose)
 		setOptionalString(nodeBody, "nat_iface", node.NATIface)
 		setOptionalString(nodeBody, "dns", node.DNS)
+		setOptionalStrings(nodeBody, "aliases", node.Aliases)
 		setOptionalString(nodeBody, "via", node.Via)
 		setOptionalStrings(nodeBody, "backup", node.Backup)
 	}

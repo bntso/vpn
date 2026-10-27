@@ -1,5 +1,5 @@
 [Unit]
-Description=bntsovpn control plane (config API over WireGuard)
+Description=bntsovpn control plane (config API and private DNS over WireGuard)
 After=network-online.target
 Wants=network-online.target
 

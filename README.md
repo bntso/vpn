@@ -65,14 +65,17 @@ unmapped top-level attributes can be reused as variables. References,
 domain         = env("VPN_DOMAIN")
 wireguard_port = 51820
 
-name   = "bntso"
-subnet = "10.13.13.0/24"
-admin  = "home"
+name       = "bntso"
+subnet     = "10.13.13.0/24"
+admin      = "home"
+dns_domain = "bntso.internal"
 
 node "home" {
   role        = "hub"
   endpoint    = "home.${domain}:${wireguard_port}"
   listen_port = wireguard_port
+  dns         = "192.168.1.1"
+  aliases     = ["gateway", "files"]
 }
 
 node "phone" {
@@ -83,6 +86,24 @@ node "phone" {
 
 Run `bntsovpn init` for a fully commented template. The configuration contains
 no secrets; `state.yaml` and `agent.yaml` remain YAML and are tool-managed.
+
+### Private DNS
+
+With `dns_domain` set, `serve` listens for DNS on the admin node's VPN address
+(UDP/TCP port 53). Every node name and alias resolves to its current tunnel
+address. In the example above, `home.bntso.internal`,
+`gateway.bntso.internal`, and `files.bntso.internal` all resolve to `home`.
+The search domain also makes short names such as `gateway` work.
+
+The admin node's `dns` is the upstream resolver for names outside the private
+zone; it must not be the admin VPN address. Without `dns_domain`, `dns` retains
+its original behavior and is pushed directly to every node.
+
+Nodes register the DNS server and search domain through `resolvconf`, so install
+`openresolv` (or another compatible `resolvconf` implementation) on every node.
+Port 53 must be available on the admin VPN address. Run `bntsovpn apply` after
+changing nodes or aliases; the running DNS service reads the updated records
+without a restart. Avoid `.local`, which is reserved for mDNS.
 
 Convert an existing YAML network configuration with:
 

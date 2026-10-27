@@ -35,6 +35,7 @@ type view struct {
 	Address    string
 	ListenPort int
 	DNS        string
+	DNSSearch  string
 	PostUp     string
 	PostDown   string
 	Peers      []peerView
@@ -49,6 +50,9 @@ ListenPort = {{ .ListenPort }}
 {{- end }}
 {{- if .DNS }}
 DNS = {{ .DNS }}
+{{- end }}
+{{- if .DNSSearch }}
+DNSSearch = {{ .DNSSearch }}
 {{- end }}
 {{- if .PostUp }}
 PostUp = {{ .PostUp }}
@@ -120,7 +124,14 @@ func Render(cfg *netconfig.Config, st *state.State, nodeName string) (string, er
 	if node.Role == netconfig.RoleHub {
 		v.ListenPort = node.ListenPortOrDefault()
 	}
-	if admin := cfg.NodeByName(cfg.Admin); admin != nil && admin.DNS != "" {
+	if cfg.DNSDomain != "" {
+		adminState := st.Nodes[cfg.Admin]
+		if adminState == nil {
+			return "", fmt.Errorf("admin node %q has no state", cfg.Admin)
+		}
+		v.DNS = adminState.Address
+		v.DNSSearch = cfg.DNSDomain
+	} else if admin := cfg.NodeByName(cfg.Admin); admin != nil && admin.DNS != "" {
 		v.DNS = admin.DNS
 	}
 

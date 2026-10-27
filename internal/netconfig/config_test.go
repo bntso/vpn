@@ -13,10 +13,11 @@ func TestLoadResolvesHCLVariables(t *testing.T) {
 domain        = env("BNTSOVPN_TEST_DOMAIN")
 wireguard_port = 51820
 
-name   = "bntso"
-subnet = "10.13.13.0/24"
-admin  = "home"
-api_url = "http://${node.home.endpoint}"
+name       = "bntso"
+subnet     = "10.13.13.0/24"
+admin      = "home"
+dns_domain = "bntso.internal"
+api_url    = "http://${node.home.endpoint}"
 
 node "home" {
   role        = "hub"
@@ -26,6 +27,7 @@ node "home" {
   expose      = ["192.168.1.0/24"]
   nat_iface   = "eth1"
   dns         = "192.168.1.1"
+  aliases     = ["gateway", "files"]
 }
 
 node "phone" {
@@ -50,7 +52,10 @@ node "phone" {
 	if cfg.APIURL != "http://home.example.com:51820" {
 		t.Errorf("api_url = %q, want cross-block reference", cfg.APIURL)
 	}
-	if home.NATIface != "eth1" || home.DNS != "192.168.1.1" || len(home.Expose) != 1 {
+	if cfg.DNSDomain != "bntso.internal" {
+		t.Errorf("dns_domain = %q", cfg.DNSDomain)
+	}
+	if home.NATIface != "eth1" || home.DNS != "192.168.1.1" || len(home.Expose) != 1 || len(home.Aliases) != 2 {
 		t.Errorf("optional home attributes were not decoded: %+v", home)
 	}
 	if cfg.NodeByName("phone").Via != "home" {

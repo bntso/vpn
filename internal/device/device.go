@@ -20,14 +20,15 @@ import (
 )
 
 // FileConfig is a parsed rendered wg0.conf: the WireGuard-relevant parts
-// (PrivateKey/ListenPort/[Peer] sections) plus the former wg-quick-only keys
-// the tool now applies itself (Address, DNS, PostUp/PostDown).
+// (PrivateKey/ListenPort/[Peer] sections) plus the interface-only keys the
+// tool applies itself (Address, DNS, DNSSearch, PostUp/PostDown).
 type FileConfig struct {
-	Wg       *wgtypes.Config
-	Address  string // [Interface] Address (CIDR)
-	DNS      string // [Interface] DNS (may be empty)
-	PostUp   string // raw PostUp line, %i placeholders intact
-	PostDown string
+	Wg        *wgtypes.Config
+	Address   string // [Interface] Address (CIDR)
+	DNS       string // [Interface] DNS (may be empty)
+	DNSSearch string // [Interface] DNSSearch (may be empty)
+	PostUp    string // raw PostUp line, %i placeholders intact
+	PostDown  string
 }
 
 // ParseConfig parses the WireGuard-relevant parts of a rendered wg0.conf
@@ -98,6 +99,8 @@ func ParseFile(path string) (*FileConfig, error) {
 				fc.Address = val
 			case "dns":
 				fc.DNS = val
+			case "dnssearch":
+				fc.DNSSearch = val
 			case "postup":
 				fc.PostUp = val
 			case "postdown":

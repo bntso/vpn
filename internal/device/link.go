@@ -160,23 +160,32 @@ func RunHooks(iface, commands string) error {
 	return nil
 }
 
-// ApplyDNS registers the DNS server for the interface via resolvconf, the
-// same mechanism wg-quick uses. When resolvconf is not installed a note is
-// returned for the caller to surface and no error occurs.
-func ApplyDNS(iface, dns string) (string, error) {
+// ApplyDNS registers the DNS server and optional search domain for the
+// interface via resolvconf, the same mechanism wg-quick uses. When resolvconf
+// is not installed a note is returned for the caller to surface and no error
+// occurs.
+func ApplyDNS(iface, dns, search string) (string, error) {
 	if dns == "" {
 		return "", nil
 	}
 	bin, err := exec.LookPath("resolvconf")
 	if err != nil {
-		return fmt.Sprintf("resolvconf not installed — DNS = %s from the config was not applied", dns), nil
+		return fmt.Sprintf("resolvconf not installed — DNS = %s and search domain %q from the config were not applied", dns, search), nil
 	}
 	cmd := exec.Command(bin, "-a", iface, "-m", "0", "-x")
-	cmd.Stdin = strings.NewReader("nameserver " + dns + "\n")
+	cmd.Stdin = strings.NewReader(resolvconfConfig(dns, search))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("resolvconf -a %s: %v (%s)", iface, err, strings.TrimSpace(string(out)))
 	}
 	return "", nil
+}
+
+func resolvconfConfig(dns, search string) string {
+	config := "nameserver " + dns + "\n"
+	if search != "" {
+		config += "search " + search + "\n"
+	}
+	return config
 }
 
 // RemoveDNS unregisters the interface's DNS server via resolvconf. When
@@ -253,7 +262,7 @@ func Up(iface, newConfPath, oldConfPath string) error {
 	if err := SyncRoutes(iface, fc.Wg); err != nil {
 		return err
 	}
-	if note, err := ApplyDNS(iface, fc.DNS); err != nil {
+	if note, err := ApplyDNS(iface, fc.DNS, fc.DNSSearch); err != nil {
 		return err
 	} else if note != "" {
 		fmt.Println("note:", note)

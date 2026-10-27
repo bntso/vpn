@@ -11,9 +11,11 @@ does not use `wg-quick`.
 
 The control plane renders per-node configuration. On startup, `serve` recreates
 the admin WireGuard interface from its rendered configuration to remove stale
-kernel state. Agents poll with bearer tokens, unseal responses with their
-WireGuard private keys, and apply changed configuration while preserving the
-last-known-good live setup on failure.
+kernel state. With `dns_domain` configured, it also serves private node/alias
+DNS records on the admin VPN address and forwards other queries upstream.
+Agents poll with bearer tokens, unseal responses with their WireGuard private
+keys, and apply changed configuration while preserving the last-known-good live
+setup on failure.
 
 ## Repository layout
 
@@ -22,9 +24,9 @@ last-known-good live setup on failure.
 - `internal/netconfig`: user-managed `config.hcl` schema, validation, and legacy YAML conversion.
 - `internal/state`: secret-bearing `state.yaml`, key/token lifecycle, and address allocation.
 - `internal/config`: deterministic per-node WireGuard config rendering and routing policy.
-- `internal/server`: authenticated control-plane HTTP API and bind-address safety checks.
+- `internal/server`: authenticated control-plane HTTP API, private DNS service, and bind-address safety checks.
 - `internal/agent`: polling, payload unsealing, staging, and live application.
-- `internal/device`: WireGuard/netlink lifecycle, routes, DNS, and hooks.
+- `internal/device`: WireGuard/netlink lifecycle, routes, resolvconf DNS/search-domain registration, and hooks.
 - `internal/invite`: gzip + base64 join blobs containing secrets.
 - `systemd`: service units and their embedded Go source.
 - `install-*.sh`: Linux amd64/arm64 release installers.

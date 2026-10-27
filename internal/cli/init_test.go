@@ -32,6 +32,12 @@ func TestTemplateForIsValidHCL(t *testing.T) {
 			if home.Endpoint != "home.example.com:51820" || home.ListenPort != netconfig.DefaultListenPort {
 				t.Errorf("generated WireGuard variable was not resolved: %+v", home)
 			}
+			template := templateFor(prefix)
+			for _, field := range []string{"dns_domain", "aliases", "dns"} {
+				if !strings.Contains(template, field) {
+					t.Errorf("generated template does not document %s", field)
+				}
+			}
 		})
 	}
 }

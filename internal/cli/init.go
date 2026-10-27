@@ -89,6 +89,8 @@ api_port  = %d # control plane port on the admin node's VPN IP (TCP); default 51
 # api_url = ""         # api_addr written into join blobs; empty = http://<admin VPN IP>:<api_port>.
 #                      # Set this to the public URL (e.g. "http://home.example.com:%%d") when the
 #                      # API is reached without the tunnel (recovery from broken configs).
+# dns_domain = "bntso.internal" # optional private DNS zone; requires admin dns and resolvconf.
+#                               # serve listens for DNS on the admin VPN IP (UDP/TCP 53).
 
 node "home" {
   role        = "hub" # hub or spoke
@@ -97,7 +99,8 @@ node "home" {
   listen_port = wireguard_port # hubs only; default 51820
   # expose    = ["192.168.1.0/24"] # hub prefixes reachable through the VPN
   # nat_iface = "eth0" # hubs with IPv4 expose entries; default eth0
-  # dns       = "192.168.1.1" # admin node only; pushed into every node config
+  # dns       = "192.168.1.1" # admin node only; upstream for dns_domain, otherwise pushed to all nodes
+  # aliases   = ["gateway", "files"] # additional names for this node inside dns_domain
 }
 
 # node "linode1" {
