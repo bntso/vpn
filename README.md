@@ -48,10 +48,10 @@ Start a new shell to enable completion, or run
 On the admin machine:
 
 ```sh
-bntsovpn init                        # scaffold /etc/bntsovpn/config.hcl + state.yaml
-$EDITOR /etc/bntsovpn/config.hcl     # define the mesh nodes
-bntsovpn apply                       # render configs, bring up wg0, install + start bntsovpn-serve
-bntsovpn invite <node>               # print a one-line join blob for a node
+bntsovpn init --subnet 10.13.13.0/24  # scaffold /etc/bntsovpn/config.hcl + state.yaml
+$EDITOR /etc/bntsovpn/config.hcl      # define the mesh nodes
+bntsovpn apply                        # render configs, bring up wg0, install + start bntsovpn-serve
+bntsovpn invite <node>                # print a one-line join blob for a node
 ```
 
 On each node:
@@ -71,9 +71,15 @@ agents pick up their new config on the next poll.
 
 ## Configuration
 
-The user-managed network configuration uses HCL. Nodes are labeled blocks, and
-unmapped top-level attributes can be reused as variables. References,
-`env("NAME")`, and cross-block interpolation are resolved when the file loads:
+The user-managed network configuration is `/etc/bntsovpn/config.hcl` by
+default. Use `--dir <path>` or set `BNTSOVPN_DIR` to select a different
+configuration and state directory. Run `bntsovpn init --subnet <cidr>` to
+create a fully commented template; the subnet can be IPv4 or IPv6 and decides
+the address family for the whole network.
+
+The configuration uses HCL. Nodes are labeled blocks, and unmapped top-level
+attributes can be reused as variables. References, `env("NAME")`, and
+cross-block interpolation are resolved when the file loads:
 
 ```hcl
 domain         = env("VPN_DOMAIN")
@@ -98,8 +104,46 @@ node "phone" {
 }
 ```
 
-Run `bntsovpn init` for a fully commented template. The configuration contains
-no secrets; `state.yaml` and `agent.yaml` remain YAML and are tool-managed.
+Top-level settings:
+
+- `name` (required): mesh name.
+- `subnet` (required): canonical IPv4 or IPv6 network prefix. Node addresses
+  must belong to this subnet and use the same address family.
+- `admin` (required): name of the hub node that runs the control plane.
+- `api_port` (optional): control-plane TCP port; defaults to `51821`.
+- `api_bind` (optional): address for `serve` to bind, as a host or `host:port`.
+  By default, it binds the admin node's VPN address and `api_port`.
+- `api_public` (optional): set to `true` to explicitly allow a wildcard or
+  public API bind address. Bearer tokens and sealed configuration payloads are
+  still required. External access also requires forwarding the API TCP port.
+- `api_url` (optional): API address written into join blobs. It defaults to
+  `http://<admin VPN IP>:<api_port>`; set a public URL when nodes must reach
+  the API without the tunnel, such as during recovery from a broken config.
+- `dns_domain` (optional): private DNS zone for node names and aliases. It
+  requires `dns` on the admin node and `resolvconf` on every node; `serve`
+  listens on the admin VPN address at UDP/TCP port 53.
+
+Each `node "<name>"` block supports:
+
+- `role` (required): `hub` or `spoke`.
+- `address` (optional): fixed tunnel address inside `subnet`; omit it to
+  auto-allocate an address.
+- `endpoint` (required for hubs): publicly reachable IP or DNS host and
+  WireGuard port in `host:port` form. It is not valid on spokes.
+- `listen_port` (optional, hubs): WireGuard listen port; defaults to `51820`.
+- `expose` (optional, hubs): list of additional network prefixes reachable
+  through this hub.
+- `nat_iface` (optional, hubs): interface used for IPv4 masquerading of exposed
+  prefixes; defaults to `eth0`.
+- `dns` (optional, admin node only): upstream resolver when `dns_domain` is
+  set; otherwise, this DNS server is pushed directly to every node.
+- `aliases` (optional): additional private DNS names for the node. Requires
+  `dns_domain`, and names and aliases must be unique across the mesh.
+- `via` (required for spokes): primary hub, with full routes through the VPN.
+- `backup` (optional, spokes): backup hubs, with host routes only.
+
+The configuration contains no secrets; `state.yaml` and `agent.yaml` remain
+YAML and are tool-managed.
 
 ### Private DNS
 

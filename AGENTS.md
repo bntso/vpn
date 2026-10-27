@@ -92,6 +92,8 @@ not replace the existing `bntsovpn` binary.
 - Whenever configuration fields, defaults, validation, or behavior change,
   update and verify the `bntsovpn init` generated template in the same change.
   Keep every supported user-managed field and its current guidance represented.
+  Whenever the generated template changes, update the configuration
+  documentation in `README.md` in the same change.
 - Before finishing every change, check whether documentation or this
   `AGENTS.md` needs an update. Update the affected files in the same change;
   do not defer documentation work or leave instructions describing old behavior.
