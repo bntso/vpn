@@ -1,6 +1,6 @@
-// Package netconfig defines the user-managed config.yaml schema, loading and
-// validation. The config holds no secrets; keys, tokens and auto-allocated
-// addresses live in the tool-managed state.yaml (package state).
+// Package netconfig defines the user-managed config.hcl schema, loading,
+// validation, and legacy YAML conversion. The config holds no secrets; keys,
+// tokens and auto-allocated addresses live in state.yaml (package state).
 package netconfig
 
 import (
@@ -8,11 +8,10 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/caster-zip/hclconfig"
 )
 
 const (
@@ -28,45 +27,41 @@ const (
 // net/netip (dotted-quad => IPv4, colon => IPv6), match the subnet family, lie
 // inside the subnet and be unique. When empty, apply auto-allocates one.
 type Node struct {
-	Name       string   `yaml:"name"`
-	Role       string   `yaml:"role"` // hub | spoke
-	Address    string   `yaml:"address,omitempty"`
-	Endpoint   string   `yaml:"endpoint,omitempty"`    // hubs: host:port (IP or DNS)
-	ListenPort int      `yaml:"listen_port,omitempty"` // hubs: defaults to 51820
-	Expose     []string `yaml:"expose,omitempty"`      // extra prefixes reachable via this node
-	NATIface   string   `yaml:"nat_iface,omitempty"`   // for v4 masquerade, defaults to eth0
-	DNS        string   `yaml:"dns,omitempty"`
-	Via        string   `yaml:"via,omitempty"`    // spokes: primary hub (full routes)
-	Backup     []string `yaml:"backup,omitempty"` // spokes: backup hubs (host routes only)
+	Name       string   `hcl:"name,label" yaml:"name"`
+	Role       string   `hcl:"role,attr" yaml:"role"` // hub | spoke
+	Address    string   `hcl:"address,optional" yaml:"address,omitempty"`
+	Endpoint   string   `hcl:"endpoint,optional" yaml:"endpoint,omitempty"`       // hubs: host:port (IP or DNS)
+	ListenPort int      `hcl:"listen_port,optional" yaml:"listen_port,omitempty"` // hubs: defaults to 51820
+	Expose     []string `hcl:"expose,optional" yaml:"expose,omitempty"`           // extra prefixes reachable via this node
+	NATIface   string   `hcl:"nat_iface,optional" yaml:"nat_iface,omitempty"`     // for v4 masquerade, defaults to eth0
+	DNS        string   `hcl:"dns,optional" yaml:"dns,omitempty"`
+	Via        string   `hcl:"via,optional" yaml:"via,omitempty"`       // spokes: primary hub (full routes)
+	Backup     []string `hcl:"backup,optional" yaml:"backup,omitempty"` // spokes: backup hubs (host routes only)
 }
 
-// Config is the root of config.yaml.
+// Config is the root of config.hcl.
 type Config struct {
-	Name    string `yaml:"name"`
-	Subnet  string `yaml:"subnet"` // family of this CIDR decides the network family
-	Admin   string `yaml:"admin"`  // node that runs the control plane
-	APIPort int    `yaml:"api_port"`
+	Name    string `hcl:"name,attr" yaml:"name"`
+	Subnet  string `hcl:"subnet,attr" yaml:"subnet"` // family of this CIDR decides the network family
+	Admin   string `hcl:"admin,attr" yaml:"admin"`   // node that runs the control plane
+	APIPort int    `hcl:"api_port,optional" yaml:"api_port"`
 	// APIBind overrides what serve binds (host or host:port; empty = admin
 	// node's VPN address + api_port).
-	APIBind string `yaml:"api_bind,omitempty"`
+	APIBind string `hcl:"api_bind,optional" yaml:"api_bind,omitempty"`
 	// APIPublic explicitly opts in to wildcard/public API bind addresses.
 	// Safe because config payloads are sealed to each node's WireGuard key.
-	APIPublic bool `yaml:"api_public,omitempty"`
+	APIPublic bool `hcl:"api_public,optional" yaml:"api_public,omitempty"`
 	// APIURL overrides the api_addr written into join blobs (empty =
 	// http://<admin VPN IP>:<api_port>).
-	APIURL string `yaml:"api_url,omitempty"`
-	Nodes  []Node `yaml:"nodes"`
+	APIURL string `hcl:"api_url,optional" yaml:"api_url,omitempty"`
+	Nodes  []Node `hcl:"node,block" yaml:"nodes"`
 }
 
-// Load reads and parses config.yaml.
+// Load reads, resolves and parses config.hcl.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
-	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	if err := hclconfig.LoadFile(path, &cfg); err != nil {
+		return nil, fmt.Errorf("load %s: %w", path, err)
 	}
 	return &cfg, nil
 }

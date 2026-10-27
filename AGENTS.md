@@ -19,7 +19,7 @@ last-known-good live setup on failure.
 
 - `main.go`: binary entry point.
 - `internal/cli`: Cobra commands and shared config-directory paths.
-- `internal/netconfig`: user-managed `config.yaml` schema and validation.
+- `internal/netconfig`: user-managed `config.hcl` schema, validation, and legacy YAML conversion.
 - `internal/state`: secret-bearing `state.yaml`, key/token lifecycle, and address allocation.
 - `internal/config`: deterministic per-node WireGuard config rendering and routing policy.
 - `internal/server`: authenticated control-plane HTTP API and bind-address safety checks.
@@ -52,7 +52,7 @@ not replace the existing `bntsovpn` binary.
 
 ## Invariants and safety
 
-- `config.yaml` contains no secrets. Private keys and token hashes belong in
+- `config.hcl` contains no secrets. Private keys and token hashes belong in
   `state.yaml`; agent tokens and private keys belong in `agent.yaml`.
 - Never print, commit, or expose private keys, bearer tokens, join blobs,
   rendered configs, `state.yaml`, or `agent.yaml` in logs or examples.
@@ -79,8 +79,9 @@ not replace the existing `bntsovpn` binary.
 ## Change guidelines
 
 - Keep the single-binary architecture and existing package boundaries.
-- Use the existing Cobra, YAML, netlink, wgctrl, and NaCl box APIs rather than
-  introducing overlapping dependencies.
+- Use the existing Cobra, hclconfig/HCL, YAML, netlink, wgctrl, and NaCl box
+  APIs rather than introducing overlapping dependencies. User-managed network
+  configuration is HCL; state and agent files remain YAML.
 - Validate configuration before rendering, reconciling state, or touching the
   system. Return contextual errors with node names and paths where useful.
 - Keep generated WireGuard output stable where possible; incidental changes

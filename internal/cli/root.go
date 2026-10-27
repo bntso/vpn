@@ -1,5 +1,5 @@
-// Package cli wires the cobra command tree: init, apply, invite, join,
-// serve, agent, status.
+// Package cli wires the cobra command tree: init, convert-config, apply,
+// invite, join, serve, agent, status.
 package cli
 
 import (
@@ -24,10 +24,11 @@ func dir() string {
 	return defaultDir
 }
 
-func configPath() string    { return filepath.Join(dir(), "config.yaml") }
-func statePath() string     { return filepath.Join(dir(), "state.yaml") }
-func renderedDir() string   { return filepath.Join(dir(), "rendered") }
-func agentConfPath() string { return filepath.Join(dir(), "agent.yaml") }
+func configPath() string       { return filepath.Join(dir(), "config.hcl") }
+func legacyConfigPath() string { return filepath.Join(dir(), "config.yaml") }
+func statePath() string        { return filepath.Join(dir(), "state.yaml") }
+func renderedDir() string      { return filepath.Join(dir(), "rendered") }
+func agentConfPath() string    { return filepath.Join(dir(), "agent.yaml") }
 
 func isRoot() bool { return os.Geteuid() == 0 }
 
@@ -42,6 +43,7 @@ func Execute() {
 
 	root.AddCommand(
 		initCmd(),
+		convertConfigCmd(),
 		applyCmd(),
 		inviteCmd(),
 		joinCmd(),

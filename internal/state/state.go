@@ -1,5 +1,5 @@
 // Package state manages state.yaml: the tool-managed, secret-bearing
-// counterpart of config.yaml. It stores per-node keypairs, the (pinned or
+// counterpart of config.hcl. It stores per-node keypairs, the (pinned or
 // auto-allocated) tunnel address, and the SHA-256 hash of the node's API
 // bearer token. Plaintext tokens are never persisted; `invite` rotates a
 // node's token and hands out the new plaintext.

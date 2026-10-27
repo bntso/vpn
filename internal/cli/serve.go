@@ -28,7 +28,7 @@ func serveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "bind address (overrides api_bind; default: admin node's VPN address + api_port)")
-	cmd.Flags().BoolVar(&allowPublic, "allow-public", false, "allow wildcard/public bind addresses (like api_public: true)")
+	cmd.Flags().BoolVar(&allowPublic, "allow-public", false, "allow wildcard/public bind addresses (like api_public = true)")
 	return cmd
 }
 

@@ -5,8 +5,8 @@
 #
 # Then scaffold the mesh config, edit it, and reconcile:
 #
-#   bntsovpn init                      # writes /etc/bntsovpn/config.yaml
-#   $EDITOR /etc/bntsovpn/config.yaml  # define your nodes
+#   bntsovpn init                      # writes /etc/bntsovpn/config.hcl
+#   $EDITOR /etc/bntsovpn/config.hcl  # define your nodes
 #   bntsovpn apply                     # brings up wg0 + installs/starts bntsovpn-serve
 #
 # `--init` runs init + apply for you (fine for a first-time setup you will
@@ -74,11 +74,15 @@ install -m 0755 "${TMP}/${ASSET}" "$BIN_PATH"
 echo "installed ${BIN_PATH}"
 
 if [ "$RUN_INIT" = "1" ]; then
-    if [ ! -f /etc/bntsovpn/config.yaml ]; then
+    if [ -f /etc/bntsovpn/config.yaml ] && [ ! -f /etc/bntsovpn/config.hcl ]; then
+        echo "error: /etc/bntsovpn/config.yaml uses legacy YAML; run bntsovpn convert-config first" >&2
+        exit 1
+    fi
+    if [ ! -f /etc/bntsovpn/config.hcl ]; then
         "$BIN_PATH" init
-        echo "scaffolded /etc/bntsovpn/config.yaml — edit it, then re-run: bntsovpn apply"
+        echo "scaffolded /etc/bntsovpn/config.hcl — edit it, then re-run: bntsovpn apply"
     else
-        echo "/etc/bntsovpn/config.yaml already exists, skipping init"
+        echo "/etc/bntsovpn/config.hcl already exists, skipping init"
         "$BIN_PATH" apply
     fi
 else
@@ -86,8 +90,8 @@ else
 
 Next steps:
 
-    bntsovpn init                      # scaffold /etc/bntsovpn/config.yaml
-    $EDITOR /etc/bntsovpn/config.yaml  # define your nodes
+    bntsovpn init                      # scaffold /etc/bntsovpn/config.hcl
+    $EDITOR /etc/bntsovpn/config.hcl  # define your nodes
     bntsovpn apply                     # bring up wg0, install + start bntsovpn-serve
 
 EOF

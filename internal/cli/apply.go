@@ -20,7 +20,7 @@ func applyCmd() *cobra.Command {
 	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Reconcile state with config.yaml, render all node configs",
+		Short: "Reconcile state with config.hcl, render all node configs",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runApply(dryRun)

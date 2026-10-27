@@ -107,7 +107,7 @@ func nodeByToken(st *state.State, token string) string {
 }
 
 // CheckBind refuses wildcard and public bind addresses unless allowPublic is
-// set (via `api_public: true` in config.yaml or the --allow-public flag).
+// set (via `api_public = true` in config.hcl or the --allow-public flag).
 // Loopback, private (RFC1918/ULA) and link-local addresses are always allowed,
 // as is the admin node's VPN address regardless (it is always inside the mesh
 // subnet).
@@ -148,7 +148,7 @@ func checkAddr(addr, adminVPN netip.Addr, allowPublic bool) error {
 		kind = "wildcard"
 	}
 	return fmt.Errorf("refusing to bind %s address %s: the API would be reachable outside the VPN. "+
-		"If you really want this, opt in with `api_public: true` in config.yaml or the --allow-public flag "+
+		"If you really want this, opt in with `api_public = true` in config.hcl or the --allow-public flag "+
 		"(config payloads are sealed to each node's WireGuard key, tokens are still required)", kind, addr)
 }
 
@@ -231,7 +231,7 @@ func addrOnly(addr string) string {
 // adminVPNAddr returns the admin node's tunnel address from state, or an
 // invalid Addr when unavailable.
 func adminVPNAddr(dir string) netip.Addr {
-	cfg, err := netconfig.Load(filepath.Join(dir, "config.yaml"))
+	cfg, err := netconfig.Load(filepath.Join(dir, "config.hcl"))
 	if err != nil {
 		return netip.Addr{}
 	}
