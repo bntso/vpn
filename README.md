@@ -43,6 +43,21 @@ sudo pacman -S bash-completion
 Start a new shell to enable completion, or run
 `source /usr/share/bash-completion/completions/bntsovpn` in the current shell.
 
+## Upgrade
+
+Upgrade an installed binary to the latest release:
+
+```sh
+sudo bntsovpn upgrade
+```
+
+The command downloads the matching linux/amd64 or linux/arm64 release and
+verifies its SHA-256 checksum before replacing the current executable. If the
+installed binary already matches the release, it makes no changes. Otherwise,
+it also refreshes the Bash completion and restarts active `bntsovpn-agent` and
+`bntsovpn-serve` services. Restarting `bntsovpn-serve` recreates its WireGuard
+interface and briefly interrupts VPN connections.
+
 ## Usage
 
 On the admin machine:

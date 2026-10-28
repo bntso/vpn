@@ -16,7 +16,9 @@ disappears. With `dns_domain` configured, it also serves private node/alias
 DNS records on the admin VPN address and forwards other queries upstream.
 Agents poll with bearer tokens, unseal responses with their WireGuard private
 keys, and apply changed configuration while preserving the last-known-good live
-setup on failure.
+setup on failure. The `upgrade` command verifies the latest release checksum,
+atomically replaces the current executable and Bash completion, and restarts
+active bntsovpn services.
 
 ## Repository layout
 
@@ -75,9 +77,11 @@ not replace the existing `bntsovpn` binary.
 - Avoid duplicate NAT rules when reconciling hooks; retain old `PostDown` and
   new `PostUp` handling when hooks change.
 - Device operations are privileged and mutate real interfaces, routes, DNS,
-  and iptables. Do not run `apply`, `join`, `serve`, `agent`, installers, or
-  other live network operations as part of routine verification unless the
-  user explicitly requests it and provides a suitable environment.
+  and iptables. Do not run `apply`, `join`, `serve`, `agent`, `upgrade`,
+  installers, or other live network operations as part of routine verification
+  unless the user explicitly requests it and provides a suitable environment.
+  Upgrade tests must use local HTTP fixtures, temporary paths, and fake service
+  runners rather than replacing host binaries or calling systemctl.
 - Do not run installers or service-management commands merely to test changes.
 
 ## Change guidelines

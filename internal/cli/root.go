@@ -1,5 +1,5 @@
 // Package cli wires the cobra command tree: init, convert-config, apply,
-// invite, join, serve, agent, status.
+// invite, join, serve, agent, status, upgrade.
 package cli
 
 import (
@@ -50,6 +50,7 @@ func Execute() {
 		serveCmd(),
 		agentCmd(),
 		statusCmd(),
+		upgradeCmd(),
 	)
 
 	if err := root.Execute(); err != nil {
