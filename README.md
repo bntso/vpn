@@ -80,8 +80,13 @@ bntsovpn join '<join-blob>'          # writes wg0 config, brings up the tunnel, 
 Anytime:
 
 ```sh
-bntsovpn status                      # mesh nodes; live handshake/traffic on a live node
+bntsovpn status
 ```
+
+On the control plane, this shows all mesh nodes. On an agent, it shows the
+local interface, tunnel address, configured peers, and live handshake/traffic
+when available; `config.hcl` is not required. Use `sudo` if needed to read the
+root-only agent files.
 
 After editing `config.hcl`, run `bntsovpn apply` again on the admin machine;
 agents pick up their new config on the next poll.

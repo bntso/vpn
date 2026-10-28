@@ -23,12 +23,13 @@ import (
 // (PrivateKey/ListenPort/[Peer] sections) plus the interface-only keys the
 // tool applies itself (Address, DNS, DNSSearch, PostUp/PostDown).
 type FileConfig struct {
-	Wg        *wgtypes.Config
-	Address   string // [Interface] Address (CIDR)
-	DNS       string // [Interface] DNS (may be empty)
-	DNSSearch string // [Interface] DNSSearch (may be empty)
-	PostUp    string // raw PostUp line, %i placeholders intact
-	PostDown  string
+	Wg           *wgtypes.Config
+	Address      string // [Interface] Address (CIDR)
+	DNS          string // [Interface] DNS (may be empty)
+	DNSSearch    string // [Interface] DNSSearch (may be empty)
+	PostUp       string // raw PostUp line, %i placeholders intact
+	PostDown     string
+	PeerComments []string // comments immediately before each [Peer] section
 }
 
 // ParseConfig parses the WireGuard-relevant parts of a rendered wg0.conf
@@ -53,18 +54,27 @@ func ParseFile(path string) (*FileConfig, error) {
 	cfg := fc.Wg
 	var peer *wgtypes.PeerConfig
 	section := ""
+	peerComment := ""
+	pendingComment := ""
 
 	flush := func() {
 		if peer != nil {
 			cfg.Peers = append(cfg.Peers, *peer)
+			fc.PeerComments = append(fc.PeerComments, peerComment)
 			peer = nil
+			peerComment = ""
 		}
 	}
 
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		if line == "" {
+			pendingComment = ""
+			continue
+		}
+		if strings.HasPrefix(line, "#") {
+			pendingComment = strings.TrimSpace(strings.TrimPrefix(line, "#"))
 			continue
 		}
 		if strings.HasPrefix(line, "[") {
@@ -72,7 +82,9 @@ func ParseFile(path string) (*FileConfig, error) {
 			section = strings.ToLower(strings.Trim(line, "[]"))
 			if section == "peer" {
 				peer = &wgtypes.PeerConfig{}
+				peerComment = pendingComment
 			}
+			pendingComment = ""
 			continue
 		}
 		key, val, ok := strings.Cut(line, "=")
