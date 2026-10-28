@@ -1,11 +1,35 @@
-// Package systemd embeds the unit files shipped in this directory so the
-// CLI can install them during `apply` (serve unit) and `join` (agent unit).
+// Package systemd embeds the unit template installed by apply and join.
 package systemd
 
-import _ "embed"
+import (
+	_ "embed"
+	"fmt"
+)
 
-//go:embed bntsovpn-serve.service
-var ServeUnit string
+type Role string
 
-//go:embed bntsovpn-agent.service
-var AgentUnit string
+const (
+	Agent Role = "agent"
+	Serve Role = "serve"
+)
+
+//go:embed bntsovpn.service
+var unitTemplate string
+
+func Unit(role Role) (string, error) {
+	var description, restart string
+	var restartSec int
+	switch role {
+	case Agent:
+		description = "bntsovpn agent (pulls WireGuard config from control plane)"
+		restart = "always"
+		restartSec = 10
+	case Serve:
+		description = "bntsovpn control plane (config API and private DNS over WireGuard)"
+		restart = "on-failure"
+		restartSec = 5
+	default:
+		return "", fmt.Errorf("unknown systemd role %q", role)
+	}
+	return fmt.Sprintf(unitTemplate, description, role, restart, restartSec), nil
+}

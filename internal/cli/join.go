@@ -45,7 +45,7 @@ func runJoin(blobStr string, dryRun bool, confPath string) error {
 		}
 		fmt.Printf("would write %s (0600): node name, API address %s, token, private key\n", agentConfPath(), blob.APIAddr)
 		fmt.Println("would bring up the wg0 interface directly (netlink, no wg-quick)")
-		fmt.Println("would install bntsovpn-agent.service and enable --now bntsovpn-agent")
+		fmt.Println("would install bntsovpn.service and start bntsovpn")
 		return nil
 	}
 
@@ -99,22 +99,9 @@ func runJoin(blobStr string, dryRun bool, confPath string) error {
 		fmt.Println("brought wg0 up (interface managed directly, no wg-quick)")
 	}
 
-	if err := os.WriteFile("/etc/systemd/system/bntsovpn-agent.service", []byte(systemd.AgentUnit), 0o644); err != nil {
-		fmt.Printf("warning: write agent unit: %v\n", err)
+	if err := installService(systemd.Agent); err != nil {
+		return fmt.Errorf("could not install bntsovpn service: %w", err)
 	}
-	failed := false
-	for _, args := range [][]string{
-		{"daemon-reload"},
-		{"enable", "--now", "bntsovpn-agent"},
-	} {
-		if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
-			fmt.Printf("warning: systemctl %v failed: %v (%s)\n", args, err, out)
-			failed = true
-		}
-	}
-	if failed {
-		return fmt.Errorf("could not enable bntsovpn-agent — check the warnings above, then re-run: systemctl enable --now bntsovpn-agent")
-	}
-	fmt.Println("enabled bntsovpn-agent")
+	fmt.Println("enabled bntsovpn")
 	return upErr
 }

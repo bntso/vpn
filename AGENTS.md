@@ -31,9 +31,10 @@ active bntsovpn services.
 - `internal/agent`: polling, payload unsealing, staging, and live application.
 - `internal/device`: WireGuard/netlink lifecycle, routes, resolvconf DNS/search-domain registration, and hooks.
 - `internal/invite`: gzip + base64 join blobs containing secrets.
-- `systemd`: service units and their embedded Go source.
-- `install-*.sh`: Linux amd64/arm64 release installers.
-- `installers_test.go`: non-destructive installer download, checksum, completion, and corruption tests.
+- `systemd`: shared `bntsovpn.service` template and its embedded Go source.
+- `install.sh`: unified Linux amd64/arm64 release installer.
+- `install-agent.sh`, `install-serve.sh`: deprecated compatibility wrappers for `install.sh`.
+- `installers_test.go`: non-destructive installer download, checksum, completion, argument, and corruption tests.
 - `.github/workflows/release.yml`: tests and builds every push, then publishes a `build-N` GitHub release.
 - `dist`: generated release binaries and checksums; do not edit by hand.
 
@@ -50,8 +51,8 @@ go build -o bntsovpn .
 ```
 
 For shell installer changes, update `installers_test.go` when the download,
-checksum, or install flow changes. Also run `bash -n install-agent.sh
-install-serve.sh` and exercise only non-destructive paths.
+checksum, or install flow changes. Also run `bash -n install.sh
+install-agent.sh install-serve.sh` and exercise only non-destructive paths.
 
 Use `go build ./...` instead of the final command when a build check should
 not replace the existing `bntsovpn` binary.

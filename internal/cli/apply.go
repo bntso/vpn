@@ -189,18 +189,11 @@ func localReconcile(cfg *netconfig.Config, oldAdminConf []byte) error {
 
 	// systemd: serve unit on the admin machine.
 	if _, err := os.Stat("/run/systemd/system"); err == nil {
-		if err := os.WriteFile("/etc/systemd/system/bntsovpn-serve.service", []byte(systemd.ServeUnit), 0o644); err != nil {
-			fmt.Printf("warning: write serve unit: %v\n", err)
+		if err := installService(systemd.Serve); err != nil {
+			fmt.Printf("warning: install bntsovpn service: %v\n", err)
+		} else {
+			fmt.Println("installed bntsovpn.service")
 		}
-		for _, args := range [][]string{
-			{"daemon-reload"},
-			{"enable", "bntsovpn-serve"},
-		} {
-			if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
-				fmt.Printf("warning: systemctl %v failed: %v (%s)\n", args, err, out)
-			}
-		}
-		fmt.Println("installed bntsovpn-serve.service")
 	}
 	return nil
 }

@@ -7,27 +7,27 @@ no `wg-quick` required.
 
 ## Install
 
-Admin / control-plane machine:
+Install the binary on the admin machine and every node:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/bntso/vpn/main/install-serve.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/bntso/vpn/main/install.sh | sudo bash
 ```
 
-Each node (agent):
+To run the admin initialization flow while installing:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/bntso/vpn/main/install-agent.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/bntso/vpn/main/install.sh | sudo bash -s -- --init
 ```
 
-Or install and join in one line (blob from `bntsovpn invite <node>` on the admin machine):
+Or install and join a node in one line (blob from `bntsovpn invite <node>` on the admin machine):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/bntso/vpn/main/install-agent.sh | sudo bash -s -- '<join-blob>'
+curl -fsSL https://raw.githubusercontent.com/bntso/vpn/main/install.sh | sudo bash -s -- '<join-blob>'
 ```
 
-Both scripts detect the architecture (linux/amd64, linux/arm64), download the
-latest release binary, verify its SHA-256 checksum, and install it to
-`/usr/local/bin/bntsovpn`. They also install Bash completion to
+The script detects the architecture (linux/amd64, linux/arm64), downloads the
+latest release binary, verifies its SHA-256 checksum, and installs it to
+`/usr/local/bin/bntsovpn`. It also installs Bash completion to
 `/usr/share/bash-completion/completions/bntsovpn` on Ubuntu and Arch Linux.
 
 Install the Bash completion loader if it is not already present:
@@ -54,9 +54,11 @@ sudo bntsovpn upgrade
 The command downloads the matching linux/amd64 or linux/arm64 release and
 verifies its SHA-256 checksum before replacing the current executable. If the
 installed binary already matches the release, it makes no changes. Otherwise,
-it also refreshes the Bash completion and restarts active `bntsovpn-agent` and
-`bntsovpn-serve` services. Restarting `bntsovpn-serve` recreates its WireGuard
-interface and briefly interrupts VPN connections.
+it also refreshes the Bash completion and restarts the active `bntsovpn`
+service. Legacy `bntsovpn-agent` and `bntsovpn-serve` services are also
+recognized until the next `apply` or `join` migrates them to
+`bntsovpn.service`. Restarting the service on the admin machine recreates its
+WireGuard interface and briefly interrupts VPN connections.
 
 ## Usage
 
@@ -65,14 +67,14 @@ On the admin machine:
 ```sh
 bntsovpn init --subnet 10.13.13.0/24  # scaffold /etc/bntsovpn/config.hcl + state.yaml
 $EDITOR /etc/bntsovpn/config.hcl      # define the mesh nodes
-bntsovpn apply                        # render configs, bring up wg0, install + start bntsovpn-serve
+bntsovpn apply                        # render configs, bring up wg0, install + start bntsovpn
 bntsovpn invite <node>                # print a one-line join blob for a node
 ```
 
 On each node:
 
 ```sh
-bntsovpn join '<join-blob>'          # writes wg0 config, brings up the tunnel, installs + starts bntsovpn-agent
+bntsovpn join '<join-blob>'          # writes wg0 config, brings up the tunnel, installs + starts bntsovpn
 ```
 
 Anytime:
@@ -189,7 +191,7 @@ The converter validates the configuration, refuses to overwrite an existing
 HCL values; you can add variables and `env()` expressions afterward. The old
 YAML file is not loaded automatically.
 
-Starting or restarting `bntsovpn-serve` recreates the admin machine's `wg0`
+Starting or restarting `bntsovpn` recreates the admin machine's `wg0`
 from its rendered configuration, removing stale addresses, routes, peers, DNS,
 and hook state. This briefly interrupts the hub's VPN connections. While running,
 `serve` checks every 30 seconds and restores `wg0` from the rendered configuration

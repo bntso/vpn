@@ -261,6 +261,8 @@ func TestRestartActiveServices(t *testing.T) {
 		t.Fatalf("restart active services: %v", err)
 	}
 	want := []string{
+		"is-active --quiet bntsovpn",
+		"restart bntsovpn",
 		"is-active --quiet bntsovpn-agent",
 		"restart bntsovpn-agent",
 		"is-active --quiet bntsovpn-serve",
@@ -272,6 +274,9 @@ func TestRestartActiveServices(t *testing.T) {
 
 func TestRestartActiveServicesFailure(t *testing.T) {
 	run := func(args ...string) ([]byte, error) {
+		if args[0] == "is-active" && args[2] == serviceName {
+			return nil, errors.New("inactive")
+		}
 		if args[0] == "restart" {
 			return []byte("unit failure"), errors.New("exit status 1")
 		}

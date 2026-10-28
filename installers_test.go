@@ -18,48 +18,48 @@ func TestInstallersVerifyDownloadedReleaseAsset(t *testing.T) {
 		t.Skip("sha256sum is required to test checksum verification")
 	}
 
-	for _, script := range []string{"install-serve.sh", "install-agent.sh"} {
-		t.Run(script, func(t *testing.T) {
-			fixture := t.TempDir()
-			binDir := filepath.Join(fixture, "bin")
-			if err := os.Mkdir(binDir, 0o755); err != nil {
-				t.Fatal(err)
-			}
+	script := "install.sh"
+	t.Run(script, func(t *testing.T) {
+		fixture := t.TempDir()
+		binDir := filepath.Join(fixture, "bin")
+		if err := os.Mkdir(binDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 
-			const assetName = "bntsovpn-linux-amd64"
-			const completion = "# bash completion fixture\ncomplete -F __start_bntsovpn bntsovpn\n"
-			asset := []byte(`#!/usr/bin/env bash
+		const assetName = "bntsovpn-linux-amd64"
+		const completion = "# bash completion fixture\ncomplete -F __start_bntsovpn bntsovpn\n"
+		asset := []byte(`#!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "completion" ] && [ "${2:-}" = "bash" ]; then
     cat <<'EOF'
 ` + completion + `EOF
 fi
 `)
-			assetPath := filepath.Join(fixture, assetName)
-			if err := os.WriteFile(assetPath, asset, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			checksum := sha256.Sum256(asset)
-			checksums := fmt.Sprintf("%x  %s\n", checksum, assetName)
-			if err := os.WriteFile(filepath.Join(fixture, "checksums.txt"), []byte(checksums), 0o644); err != nil {
-				t.Fatal(err)
-			}
+		assetPath := filepath.Join(fixture, assetName)
+		if err := os.WriteFile(assetPath, asset, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		checksum := sha256.Sum256(asset)
+		checksums := fmt.Sprintf("%x  %s\n", checksum, assetName)
+		if err := os.WriteFile(filepath.Join(fixture, "checksums.txt"), []byte(checksums), 0o644); err != nil {
+			t.Fatal(err)
+		}
 
-			writeExecutable(t, binDir, "curl", `#!/usr/bin/env bash
+		writeExecutable(t, binDir, "curl", `#!/usr/bin/env bash
 set -euo pipefail
 cp "$FIXTURE/${2##*/}" "$4"
 `)
-			writeExecutable(t, binDir, "id", `#!/usr/bin/env bash
+		writeExecutable(t, binDir, "id", `#!/usr/bin/env bash
 printf '0\n'
 `)
-			writeExecutable(t, binDir, "uname", `#!/usr/bin/env bash
+		writeExecutable(t, binDir, "uname", `#!/usr/bin/env bash
 if [ "${1:-}" = "-m" ]; then
     printf 'x86_64\n'
 else
     printf 'Linux\n'
 fi
 `)
-			writeExecutable(t, binDir, "install", `#!/usr/bin/env bash
+		writeExecutable(t, binDir, "install", `#!/usr/bin/env bash
 set -euo pipefail
 if [ "${1:-}" = "-d" ]; then
     exit 0
@@ -74,51 +74,79 @@ esac
 cp "$source" "$output"
 `)
 
-			env := append(os.Environ(),
-				"FIXTURE="+fixture,
-				"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-			)
-			runInstaller := func() (string, error) {
-				cmd := exec.Command("bash", script)
-				cmd.Env = env
-				output, err := cmd.CombinedOutput()
-				return string(output), err
-			}
+		env := append(os.Environ(),
+			"FIXTURE="+fixture,
+			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		)
+		runInstaller := func() (string, error) {
+			cmd := exec.Command("bash", script)
+			cmd.Env = env
+			output, err := cmd.CombinedOutput()
+			return string(output), err
+		}
 
-			output, err := runInstaller()
-			if err != nil {
-				t.Fatalf("installer failed with a valid release: %v\n%s", err, output)
-			}
-			installed, err := os.ReadFile(filepath.Join(fixture, "installed"))
-			if err != nil {
-				t.Fatalf("read installed fixture: %v", err)
-			}
-			if string(installed) != string(asset) {
-				t.Fatal("installer did not install the verified release asset")
-			}
-			installedCompletion, err := os.ReadFile(filepath.Join(fixture, "bash-completion"))
-			if err != nil {
-				t.Fatalf("read installed completion fixture: %v", err)
-			}
-			if string(installedCompletion) != completion {
-				t.Fatalf("installer did not install the generated Bash completion: got %q, want %q", installedCompletion, completion)
-			}
+		output, err := runInstaller()
+		if err != nil {
+			t.Fatalf("installer failed with a valid release: %v\n%s", err, output)
+		}
+		installed, err := os.ReadFile(filepath.Join(fixture, "installed"))
+		if err != nil {
+			t.Fatalf("read installed fixture: %v", err)
+		}
+		if string(installed) != string(asset) {
+			t.Fatal("installer did not install the verified release asset")
+		}
+		installedCompletion, err := os.ReadFile(filepath.Join(fixture, "bash-completion"))
+		if err != nil {
+			t.Fatalf("read installed completion fixture: %v", err)
+		}
+		if string(installedCompletion) != completion {
+			t.Fatalf("installer did not install the generated Bash completion: got %q, want %q", installedCompletion, completion)
+		}
 
-			if err := os.Remove(filepath.Join(fixture, "installed")); err != nil {
-				t.Fatal(err)
+		if err := os.Remove(filepath.Join(fixture, "installed")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(assetPath, []byte("corrupted download"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		output, err = runInstaller()
+		if err == nil {
+			t.Fatal("installer accepted a corrupted release asset")
+		}
+		if !strings.Contains(output, "error: checksum verification failed") {
+			t.Fatalf("installer failed for an unexpected reason:\n%s", output)
+		}
+		if _, err := os.Stat(filepath.Join(fixture, "installed")); !os.IsNotExist(err) {
+			t.Fatal("corrupted release asset was installed")
+		}
+	})
+}
+
+func TestInstallerRejectsInvalidArguments(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		env  string
+	}{
+		{name: "unknown option", args: []string{"--unknown"}},
+		{name: "extra arguments", args: []string{"first", "second"}},
+		{name: "init and join argument", args: []string{"--init", "join-blob"}},
+		{name: "init and join environment", args: []string{"--init"}, env: "JOIN_BLOB=join-blob"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := exec.Command("bash", append([]string{"install.sh"}, test.args...)...)
+			cmd.Env = os.Environ()
+			if test.env != "" {
+				cmd.Env = append(cmd.Env, test.env)
 			}
-			if err := os.WriteFile(assetPath, []byte("corrupted download"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			output, err = runInstaller()
+			output, err := cmd.CombinedOutput()
 			if err == nil {
-				t.Fatal("installer accepted a corrupted release asset")
+				t.Fatalf("installer accepted invalid arguments:\n%s", output)
 			}
-			if !strings.Contains(output, "error: checksum verification failed") {
-				t.Fatalf("installer failed for an unexpected reason:\n%s", output)
-			}
-			if _, err := os.Stat(filepath.Join(fixture, "installed")); !os.IsNotExist(err) {
-				t.Fatal("corrupted release asset was installed")
+			if !strings.Contains(string(output), "error:") {
+				t.Fatalf("installer failed without an argument error:\n%s", output)
 			}
 		})
 	}

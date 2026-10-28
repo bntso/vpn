@@ -247,7 +247,7 @@ func restartActiveServices(systemdPath string, run func(args ...string) ([]byte,
 		}
 		return fmt.Errorf("check systemd availability: %w", err)
 	}
-	for _, unit := range []string{"bntsovpn-agent", "bntsovpn-serve"} {
+	for _, unit := range append([]string{serviceName}, legacyServiceNames...) {
 		if _, err := run("is-active", "--quiet", unit); err != nil {
 			continue
 		}
