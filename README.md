@@ -205,8 +205,9 @@ Starting or restarting `bntsovpn` recreates the admin machine's `wg0`
 from its rendered configuration, removing stale addresses, routes, peers, DNS,
 and hook state. This briefly interrupts the hub's VPN connections. While running,
 `serve` checks every 30 seconds and restores `wg0` from the rendered configuration
-if the interface disappears. Agent polls continue to update existing interfaces
-without recreating them.
+if the interface disappears. Agents reconcile once after startup, including DNS
+and other live state, then apply changed configurations on later polls without
+recreating existing interfaces.
 
 ## Build from source
 

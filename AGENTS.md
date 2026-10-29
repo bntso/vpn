@@ -15,9 +15,10 @@ kernel state, then checks every 30 seconds and restores the interface if it
 disappears. With `dns_domain` configured, it also serves private node/alias
 DNS records on the admin VPN address and forwards other queries upstream.
 Agents poll with bearer tokens, unseal responses with their WireGuard private
-keys, and apply changed configuration while preserving the last-known-good live
-setup on failure. The `upgrade` command verifies the latest release checksum,
-atomically replaces the current executable and Bash completion, and restarts
+keys, reconcile once after startup, and apply changed configurations on later
+polls while preserving the last-known-good live setup on failure. The `upgrade`
+command verifies the latest release checksum, atomically replaces the current
+executable and Bash completion, and restarts
 active bntsovpn services.
 
 ## Repository layout

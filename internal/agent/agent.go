@@ -1,6 +1,6 @@
-// Package agent implements the pull-based node daemon: poll the control
-// plane, compare the config hash, and apply only when the hash changed. The
-// agent manages the WireGuard interface directly (netlink + wgctrl via
+// Package agent implements the pull-based node daemon: reconcile after startup,
+// then poll the control plane and apply configurations when their hashes change.
+// The agent manages the WireGuard interface directly (netlink + wgctrl via
 // package device — no wg-quick). The fetch and hash comparison always happen
 // before any system call; a failed live apply is logged and the previous
 // live config keeps running (last-known-good).
@@ -196,11 +196,14 @@ func (c *Config) ensureInterface() {
 	}
 }
 
-// Once performs a single fetch/apply cycle. It prints what it fetched and
-// whether the hash changed, then — only on change — writes the new config and
-// attempts a live sync. A failed sync is tolerated (logged); the running
-// interface keeps its last-known-good configuration.
+// Once fetches and reconciles the live configuration, even when its hash is
+// unchanged. A failed sync is tolerated (logged); the running interface keeps
+// its last-known-good configuration.
 func (c *Config) Once() error {
+	return c.once(true)
+}
+
+func (c *Config) once(force bool) error {
 	if err := c.validate(); err != nil {
 		return err
 	}
@@ -221,14 +224,19 @@ func (c *Config) Once() error {
 
 	hashPath := c.ConfigPath + ".sha256"
 	last, _ := os.ReadFile(hashPath)
-	if strings.TrimSpace(string(last)) == fr.SHA256 {
+	unchanged := strings.TrimSpace(string(last)) == fr.SHA256
+	if unchanged && !force {
 		// Hash unchanged, but a failed ensureInterface above (or an
 		// interface that flapped since) may still need the staged config.
 		c.ensureInterface()
 		fmt.Println("hash unchanged: config already up to date, nothing to do")
 		return nil
 	}
-	fmt.Println("hash changed: applying new config")
+	if unchanged {
+		fmt.Println("hash unchanged: reconciling live configuration")
+	} else {
+		fmt.Println("hash changed: applying new config")
+	}
 
 	if len(conf) == 0 || !strings.Contains(string(conf), "[Interface]") {
 		return fmt.Errorf("unsealed config looks invalid, keeping last-known-good")
@@ -267,20 +275,23 @@ func (c *Config) Once() error {
 	return nil
 }
 
-// Run is the daemon loop: poll every interval plus jitter, with exponential
-// backoff on API failures. Any error leaves the last-known-good config live.
+// Run is the daemon loop: reconcile after startup, then poll every interval
+// plus jitter and apply changed hashes. Any error leaves the last-known-good
+// config live.
 func (c *Config) Run(interval time.Duration) error {
 	if err := c.validate(); err != nil {
 		return err
 	}
 	fmt.Printf("bntsovpn agent: node %q, polling %s every %s\n", c.Node, c.API, interval)
 	failures := 0
+	force := true
 	for {
-		if err := c.Once(); err != nil {
+		if err := c.once(force); err != nil {
 			failures++
 			fmt.Printf("agent: %v (keeping last-known-good)\n", err)
 		} else {
 			failures = 0
+			force = false
 		}
 		delay := interval + time.Duration(rand.Int63n(int64(interval/4+1)))
 		if failures > 0 {
