@@ -29,7 +29,7 @@ active bntsovpn services.
 - `internal/config`: deterministic per-node WireGuard config rendering and routing policy.
 - `internal/server`: authenticated control-plane HTTP API, private DNS service, and bind-address safety checks.
 - `internal/agent`: polling, payload unsealing, staging, and live application.
-- `internal/device`: WireGuard/netlink lifecycle, routes, resolvconf DNS/search-domain registration, and hooks.
+- `internal/device`: WireGuard/netlink lifecycle, routes, automatic systemd-resolved/resolvconf/direct-resolv.conf DNS registration, and hooks.
 - `internal/invite`: gzip + base64 join blobs containing secrets.
 - `systemd`: shared `bntsovpn.service` template and its embedded Go source.
 - `install.sh`: unified Linux amd64/arm64 release installer.

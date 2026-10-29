@@ -89,8 +89,8 @@ api_port  = %d # control plane port on the admin node's VPN IP (TCP); default 51
 # api_url = ""         # api_addr written into join blobs; empty = http://<admin VPN IP>:<api_port>.
 #                      # Set this to the public URL (e.g. "http://home.example.com:%%d") when the
 #                      # API is reached without the tunnel (recovery from broken configs).
-# dns_domain = "bntso.internal" # optional private DNS zone; requires admin dns and resolvconf.
-#                               # serve listens for DNS on the admin VPN IP (UDP/TCP 53).
+# dns_domain = "bntso.internal" # optional private DNS zone; requires admin dns.
+#                               # serve listens on the admin VPN IP; nodes auto-detect their DNS backend.
 
 node "home" {
   role        = "hub" # hub or spoke

@@ -160,51 +160,6 @@ func RunHooks(iface, commands string) error {
 	return nil
 }
 
-// ApplyDNS registers the DNS server and optional search domain for the
-// interface via resolvconf, the same mechanism wg-quick uses. When resolvconf
-// is not installed a note is returned for the caller to surface and no error
-// occurs.
-func ApplyDNS(iface, dns, search string) (string, error) {
-	if dns == "" {
-		return "", nil
-	}
-	bin, err := exec.LookPath("resolvconf")
-	if err != nil {
-		return fmt.Sprintf("resolvconf not installed — DNS = %s and search domain %q from the config were not applied", dns, search), nil
-	}
-	cmd := exec.Command(bin, "-a", iface, "-m", "0", "-x")
-	cmd.Stdin = strings.NewReader(resolvconfConfig(dns, search))
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("resolvconf -a %s: %v (%s)", iface, err, strings.TrimSpace(string(out)))
-	}
-	return "", nil
-}
-
-func resolvconfConfig(dns, search string) string {
-	config := "nameserver " + dns + "\n"
-	if search != "" {
-		config += "search " + search + "\n"
-	}
-	return config
-}
-
-// RemoveDNS unregisters the interface's DNS server via resolvconf. When
-// resolvconf is not installed a note is returned for the caller to surface.
-func RemoveDNS(iface, dns string) (string, error) {
-	if dns == "" {
-		return "", nil
-	}
-	bin, err := exec.LookPath("resolvconf")
-	if err != nil {
-		return "resolvconf not installed — could not remove the interface's previous DNS registration", nil
-	}
-	cmd := exec.Command(bin, "-d", iface)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("resolvconf -d %s: %v (%s)", iface, err, strings.TrimSpace(string(out)))
-	}
-	return "", nil
-}
-
 // Recreate replaces an existing interface with a clean one built from confPath.
 // The previous configuration supplies PostDown and DNS cleanup. Cleanup happens
 // before deletion so a cleanup failure leaves the existing interface intact.

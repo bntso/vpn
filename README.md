@@ -142,8 +142,8 @@ Top-level settings:
   `http://<admin VPN IP>:<api_port>`; set a public URL when nodes must reach
   the API without the tunnel, such as during recovery from a broken config.
 - `dns_domain` (optional): private DNS zone for node names and aliases. It
-  requires `dns` on the admin node and `resolvconf` on every node; `serve`
-  listens on the admin VPN address at UDP/TCP port 53.
+  requires `dns` on the admin node; `serve` listens on the admin VPN address at
+  UDP/TCP port 53.
 
 Each `node "<name>"` block supports:
 
@@ -179,8 +179,13 @@ The admin node's `dns` is the upstream resolver for names outside the private
 zone; it must not be the admin VPN address. Without `dns_domain`, `dns` retains
 its original behavior and is pushed directly to every node.
 
-Nodes register the DNS server and search domain through `resolvconf`, so install
-`openresolv` (or another compatible `resolvconf` implementation) on every node.
+Nodes automatically use `systemd-resolved` when it is active and is the system
+resolver, or `resolvconf` when it owns `/etc/resolv.conf`. If neither cooperative
+backend is active, `bntsovpn` backs up `/etc/resolv.conf` to
+`/etc/resolv.conf.bntsovpn-backup` and manages it directly. Cleanup restores the
+backup only when the managed file has not been changed by another program.
+Standalone `openresolv` is optional, not required.
+
 Port 53 must be available on the admin VPN address. Run `bntsovpn apply` after
 changing nodes or aliases; the running DNS service reads the updated records
 without a restart. Avoid `.local`, which is reserved for mDNS.
