@@ -162,6 +162,8 @@ Each `node "<name>"` block supports:
 - `aliases` (optional): additional private DNS names for the node. Requires
   `dns_domain`, and names and aliases must be unique across the mesh.
 - `via` (required for spokes): primary hub, with full routes through the VPN.
+  Other hubs route the spoke's traffic through this hub rather than creating a
+  direct peer without an endpoint.
 - `backup` (optional, spokes): backup hubs, with host routes only.
 
 The configuration contains no secrets; `state.yaml` and `agent.yaml` remain

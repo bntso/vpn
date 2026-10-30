@@ -70,3 +70,46 @@ func TestAliasesDoNotChangeRenderedConfigs(t *testing.T) {
 		t.Error("alias-only change altered a rendered node config")
 	}
 }
+
+func TestRenderRoutesRemoteSpokesThroughTheirPrimaryHub(t *testing.T) {
+	cfg, st := dnsRenderFixture()
+	cfg.Nodes = append(cfg.Nodes,
+		netconfig.Node{Name: "linode1", Role: netconfig.RoleHub, Endpoint: "linode1.example.com:51820"},
+		netconfig.Node{Name: "caster", Role: netconfig.RoleSpoke, Via: "linode1"},
+	)
+	st.Nodes["linode1"] = &state.NodeState{Address: "10.13.13.3", PrivateKey: "linode1-private", PublicKey: "linode1-public"}
+	st.Nodes["caster"] = &state.NodeState{Address: "10.13.13.4", PrivateKey: "caster-private", PublicKey: "caster-public"}
+
+	for _, test := range []struct {
+		node        string
+		viaPeer     string
+		allowedIPs  string
+		directSpoke string
+		remoteSpoke string
+	}{
+		{node: "home", viaPeer: "linode1", allowedIPs: "AllowedIPs = 10.13.13.3/32, 10.13.13.4/32\n", directSpoke: "phone", remoteSpoke: "caster"},
+		{node: "linode1", viaPeer: "home", allowedIPs: "AllowedIPs = 10.13.13.1/32, 10.13.13.2/32\n", directSpoke: "caster", remoteSpoke: "phone"},
+	} {
+		rendered, err := Render(cfg, st, test.node)
+		if err != nil {
+			t.Fatalf("Render(%q): %v", test.node, err)
+		}
+		peerStart := strings.Index(rendered, "# "+test.viaPeer+" (hub)\n")
+		if peerStart < 0 {
+			t.Fatalf("%s config has no %s peer", test.node, test.viaPeer)
+		}
+		peer := rendered[peerStart:]
+		if next := strings.Index(peer[1:], "\n# "); next >= 0 {
+			peer = peer[:next+1]
+		}
+		if !strings.Contains(peer, test.allowedIPs) {
+			t.Errorf("%s peer on %s does not route the remote spoke:\n%s", test.viaPeer, test.node, peer)
+		}
+		if !strings.Contains(rendered, "# "+test.directSpoke+" (spoke)\n") {
+			t.Errorf("%s config lost its direct spoke %s", test.node, test.directSpoke)
+		}
+		if strings.Contains(rendered, "# "+test.remoteSpoke+" (spoke)\n") {
+			t.Errorf("%s config has a direct peer for remote spoke %s", test.node, test.remoteSpoke)
+		}
+	}
+}

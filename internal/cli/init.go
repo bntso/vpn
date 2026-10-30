@@ -112,7 +112,7 @@ node "home" {
 # node "phone" {
 #   role    = "spoke"
 #   address = %q
-#   via     = "home" # spokes only; primary hub with full routes
+#   via     = "home" # spokes only; primary hub with full routes; other hubs route through it
 #   # backup = ["linode1"] # spokes only; backup hubs with host routes only
 # }
 `, netconfig.DefaultListenPort, p.String(), netconfig.DefaultAPIPort, addr, second, third)

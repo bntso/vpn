@@ -1,8 +1,9 @@
 // Package config renders per-node wg0.conf files from the validated config
 // and reconciled state, following the hub/spoke cryptokey-routing model:
 //
-//   - hubs peer with every node using host routes (/32 or /128); hub<->hub
-//     entries additionally carry the other hub's exposed prefixes;
+//   - hubs peer directly with their own spokes using host routes (/32 or
+//     /128); hub<->hub entries additionally carry the other hub's exposed
+//     prefixes and routes to spokes using that hub as their primary;
 //   - spokes get full routes (subnet + all exposed prefixes) on their `via`
 //     hub and host routes only on `backup` hubs, with PersistentKeepalive=25;
 //   - hubs exposing v4 prefixes get iptables masquerade PostUp/PostDown
@@ -161,10 +162,21 @@ func Render(cfg *netconfig.Config, st *state.State, nodeName string) (string, er
 
 	switch node.Role {
 	case netconfig.RoleHub:
-		// One host-route peer per other node; hub<->hub entries also carry the
-		// other hub's exposed prefixes. No overlapping prefixes.
+		// Remote spokes are reached through their primary hub, not through a
+		// direct peer without an endpoint. Keep every route non-overlapping.
+		routedSpokes := map[string][]string{}
+		for _, spoke := range cfg.Nodes {
+			if spoke.Role != netconfig.RoleSpoke || spoke.Via == node.Name {
+				continue
+			}
+			sst := st.Nodes[spoke.Name]
+			if sst == nil {
+				return "", fmt.Errorf("node %q has no state", spoke.Name)
+			}
+			routedSpokes[spoke.Via] = append(routedSpokes[spoke.Via], hostRoute(sst.Address))
+		}
 		for _, other := range cfg.Nodes {
-			if other.Name == node.Name {
+			if other.Name == node.Name || (other.Role == netconfig.RoleSpoke && other.Via != node.Name) {
 				continue
 			}
 			ost := st.Nodes[other.Name]
@@ -180,6 +192,7 @@ func Render(cfg *netconfig.Config, st *state.State, nodeName string) (string, er
 				for _, p := range ps {
 					allowed = append(allowed, p.String())
 				}
+				allowed = append(allowed, routedSpokes[other.Name]...)
 			}
 			pv := peerView{
 				Comment:    fmt.Sprintf("%s (%s)", other.Name, other.Role),
