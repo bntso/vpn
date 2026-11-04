@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -40,6 +41,69 @@ type Config struct {
 	// PrivateKey is the node's WireGuard private key, needed to unseal config
 	// payloads. Written by join; the file is 0600.
 	PrivateKey string `yaml:"private_key"`
+	// AgentFile is the path of the agent.yaml this config was loaded from. It
+	// anchors the status file the daemon persists for `bntsovpn status`.
+	// Empty when the config was built from flags only. Not serialized.
+	AgentFile string `yaml:"-"`
+}
+
+// Status is the agent's operator-facing runtime state, persisted next to
+// agent.yaml so `bntsovpn status` can surface terminal conditions without
+// reading the daemon's logs.
+type Status struct {
+	// LastTokenRejection is when the control plane last rejected this node's
+	// bearer token (HTTP 401/403). Re-joining with a fresh invite blob is
+	// required; the tunnel keeps running its last-known-good config.
+	LastTokenRejection time.Time `yaml:"last_token_rejection,omitempty"`
+}
+
+// LoadStatus reads a persisted agent status file. A missing file is not an
+// error and yields a zero Status.
+func LoadStatus(path string) (*Status, error) {
+	st := &Status{}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return st, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read agent status %s: %w", path, err)
+	}
+	if err := yaml.Unmarshal(data, st); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return st, nil
+}
+
+// statusFilePath locates the status file next to agent.yaml.
+func (c *Config) statusFilePath() (string, bool) {
+	if c.AgentFile == "" {
+		return "", false
+	}
+	return filepath.Join(filepath.Dir(c.AgentFile), "agent-status.yaml"), true
+}
+
+func (c *Config) noteTokenRejected() {
+	path, ok := c.statusFilePath()
+	if !ok {
+		return
+	}
+	data, err := yaml.Marshal(&Status{LastTokenRejection: time.Now()})
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		fmt.Printf("warning: could not write %s: %v\n", path, err)
+	}
+}
+
+func (c *Config) clearTokenRejected() {
+	path, ok := c.statusFilePath()
+	if !ok {
+		return
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Printf("warning: could not remove %s: %v\n", path, err)
+	}
 }
 
 // LoadConfig reads an agent.yaml file.
@@ -53,6 +117,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	cfg.API = normalizeAPI(cfg.API)
+	cfg.AgentFile = path
 	return &cfg, nil
 }
 
@@ -122,6 +187,13 @@ type fetchResult struct {
 	SHA256  string `json:"sha256"`  // hex sha256 of the PLAINTEXT config
 }
 
+// ErrTokenRejected is returned (wrapped) when the control plane rejects the
+// node's bearer token with HTTP 401/403. Unlike a transient fetch failure
+// this never heals by retrying: the node must be re-joined with a fresh
+// invite blob from the admin machine. The agent keeps the last-known-good
+// config running in the meantime.
+var ErrTokenRejected = errors.New("token rejected by the control plane — re-run `bntsovpn join` with a fresh invite blob")
+
 // fetch retrieves the node's own sealed config from the control plane. No
 // system state is touched here.
 func (c *Config) fetch(client *http.Client) (*fetchResult, error) {
@@ -141,7 +213,11 @@ func (c *Config) fetch(client *http.Client) (*fetchResult, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		detail := strings.TrimSpace(string(body))
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("%w: %s: %s", ErrTokenRejected, resp.Status, detail)
+		}
+		return nil, fmt.Errorf("API returned %s: %s", resp.Status, detail)
 	}
 	var fr fetchResult
 	if err := json.Unmarshal(body, &fr); err != nil {
@@ -277,7 +353,9 @@ func (c *Config) once(force bool) error {
 
 // Run is the daemon loop: reconcile after startup, then poll every interval
 // plus jitter and apply changed hashes. Any error leaves the last-known-good
-// config live.
+// config live. DNS management is re-asserted every cycle so a resolv.conf
+// overwritten by another daemon self-repairs even while the control plane is
+// unreachable.
 func (c *Config) Run(interval time.Duration) error {
 	if err := c.validate(); err != nil {
 		return err
@@ -285,14 +363,32 @@ func (c *Config) Run(interval time.Duration) error {
 	fmt.Printf("bntsovpn agent: node %q, polling %s every %s\n", c.Node, c.API, interval)
 	failures := 0
 	force := true
+	tokenRejected := false
 	for {
 		if err := c.once(force); err != nil {
 			failures++
-			fmt.Printf("agent: %v (keeping last-known-good)\n", err)
+			if errors.Is(err, ErrTokenRejected) {
+				c.noteTokenRejected()
+				if !tokenRejected {
+					fmt.Printf("agent: %v\n", err)
+					fmt.Println("agent: running last-known-good config; this node receives no updates until it is re-joined")
+					tokenRejected = true
+				} else {
+					fmt.Println("agent: token still rejected (keeping last-known-good)")
+				}
+			} else {
+				fmt.Printf("agent: %v (keeping last-known-good)\n", err)
+			}
 		} else {
 			failures = 0
 			force = false
+			if tokenRejected {
+				tokenRejected = false
+				c.clearTokenRejected()
+				fmt.Println("agent: token accepted again — cleared the re-join warning")
+			}
 		}
+		c.maintainDNS()
 		delay := interval + time.Duration(rand.Int63n(int64(interval/4+1)))
 		if failures > 0 {
 			backoff := interval << min(failures-1, 4) // up to 16x
@@ -302,5 +398,24 @@ func (c *Config) Run(interval time.Duration) error {
 			delay = backoff
 		}
 		time.Sleep(delay)
+	}
+}
+
+// maintainDNS re-asserts direct resolv.conf management when another daemon
+// (dhcpcd, dhclient, NetworkManager) has overwritten the managed file since
+// the config was applied. Best-effort: failures are logged and retried on the
+// next cycle.
+func (c *Config) maintainDNS() {
+	if os.Geteuid() != 0 || !device.InterfaceExists(c.Interface) {
+		return
+	}
+	fc, err := device.ParseFile(c.ConfigPath)
+	if err != nil || fc.DNS == "" {
+		return
+	}
+	if note, err := device.ReassertDNS(fc.DNS, fc.DNSSearch); err != nil {
+		fmt.Printf("warning: could not re-assert DNS: %v\n", err)
+	} else if note != "" {
+		fmt.Println("warning:", note)
 	}
 }

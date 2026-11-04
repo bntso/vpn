@@ -13,10 +13,14 @@ The control plane renders per-node configuration. On startup, `serve` recreates
 the admin WireGuard interface from its rendered configuration to remove stale
 kernel state, then checks every 30 seconds and restores the interface if it
 disappears. With `dns_domain` configured, it also serves private node/alias
-DNS records on the admin VPN address and forwards other queries upstream.
-Agents poll with bearer tokens, unseal responses with their WireGuard private
-keys, reconcile once after startup, and apply changed configurations on later
-polls while preserving the last-known-good live setup on failure. The `upgrade`
+DNS records on the admin VPN address and forwards other queries upstream,
+rebinding the listeners when the admin address changes. Agents poll with bearer
+tokens, unseal responses with their WireGuard private keys, reconcile once
+after startup, and apply changed configurations on later polls while preserving
+the last-known-good live setup on failure. Between polls they re-assert direct
+resolv.conf DNS management when another daemon overwrote the managed file, and
+they persist terminal token rejections (HTTP 401/403) to `agent-status.yaml`
+for the `status` command to surface. The `upgrade`
 command verifies the latest release checksum, atomically replaces the current
 executable and Bash completion, and restarts
 active bntsovpn services.
@@ -41,8 +45,11 @@ active bntsovpn services.
 
 ## Build and verification
 
-Requires the Go version declared in `go.mod` (currently Go 1.27.3). Run from
-the repository root after changes:
+Requires the Go version declared in `go.mod` (currently Go 1.27.3), pinned in
+`mise.toml`. With [mise](https://mise.jdx.dev) activated (`mise activate bash`,
+already in this machine's `~/.bashrc`), entering the repository root puts that
+Go on `PATH` automatically; without activation, prefix commands with `mise x --`
+(e.g. `mise x -- go test ./...`). Run from the repository root after changes:
 
 ```sh
 gofmt -w <changed-go-files>

@@ -110,3 +110,49 @@ func TestStatusWithoutControlPlaneOrAgentConfig(t *testing.T) {
 		t.Fatalf("status error = %v, want missing config.hcl", err)
 	}
 }
+
+func TestAgentStatusShowsTokenRejectionWarning(t *testing.T) {
+	tempDir := t.TempDir()
+	oldDir := dirFlag
+	dirFlag = tempDir
+	t.Cleanup(func() { dirFlag = oldDir })
+
+	privateKey, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentConfig := &agent.Config{
+		Node:       "phone",
+		Token:      "test-token",
+		API:        "http://10.13.13.1:51821",
+		ConfigPath: filepath.Join(tempDir, "wg0.conf"),
+		Interface:  "wg0",
+		PrivateKey: privateKey.String(),
+	}
+	if err := agentConfig.SaveConfig(agentConfPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(agentConfig.ConfigPath, []byte("[Interface]\nPrivateKey = "+privateKey.String()+"\nAddress = 10.13.13.2/24\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(agentStatusPath(), []byte("last_token_rejection: 2026-11-04T08:29:00Z\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	err = runStatusWithDevice(&out, func(string) bool { return false }, func(string) ([]device.PeerStat, error) {
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := out.String()
+	for _, want := range []string{"WARNING", "rejected this node's token", "bntsovpn join"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("status output missing %q:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, agentConfig.Token) {
+		t.Error("status output contains agent credentials")
+	}
+}

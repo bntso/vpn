@@ -86,7 +86,9 @@ bntsovpn status
 On the control plane, this shows all mesh nodes. On an agent, it shows the
 local interface, tunnel address, configured peers, and live handshake/traffic
 when available; `config.hcl` is not required. Use `sudo` if needed to read the
-root-only agent files.
+root-only agent files. It also warns when the control plane has rejected the
+node's token (revoked or rotated): the tunnel keeps running its last-known-good
+config, but the node must be re-joined with a fresh `bntsovpn invite` blob.
 
 After editing `config.hcl`, run `bntsovpn apply` again on the admin machine;
 agents pick up their new config on the next poll.
@@ -167,7 +169,9 @@ Each `node "<name>"` block supports:
 - `backup` (optional, spokes): backup hubs, with host routes only.
 
 The configuration contains no secrets; `state.yaml` and `agent.yaml` remain
-YAML and are tool-managed.
+YAML and are tool-managed. The daemon additionally keeps a tool-managed
+`agent-status.yaml` next to `agent.yaml` with operator-facing runtime state
+(currently: token rejections, for the `status` warning).
 
 ### Private DNS
 
@@ -185,12 +189,17 @@ Nodes automatically use `systemd-resolved` when it is active and is the system
 resolver, or `resolvconf` when it owns `/etc/resolv.conf`. If neither cooperative
 backend is active, `bntsovpn` backs up `/etc/resolv.conf` to
 `/etc/resolv.conf.bntsovpn-backup` and manages it directly. Cleanup restores the
-backup only when the managed file has not been changed by another program.
-Standalone `openresolv` is optional, not required.
+backup only when the managed file has not been changed by another program. The
+original backup is never overwritten once taken. While an agent runs, it
+re-asserts direct management on every poll cycle: if another daemon (such as
+dhcpcd) overwrites the managed file, the bntsovpn DNS configuration is written
+again and a warning is logged. Standalone `openresolv` is optional, not required.
 
 Port 53 must be available on the admin VPN address. Run `bntsovpn apply` after
 changing nodes or aliases; the running DNS service reads the updated records
-without a restart. Avoid `.local`, which is reserved for mDNS.
+without a restart. If `apply` changes the admin node's VPN address, the running
+`serve` rebinds the DNS listeners on the new address within 30 seconds. Avoid
+`.local`, which is reserved for mDNS.
 
 Convert an existing YAML network configuration with:
 
@@ -209,7 +218,11 @@ and hook state. This briefly interrupts the hub's VPN connections. While running
 `serve` checks every 30 seconds and restores `wg0` from the rendered configuration
 if the interface disappears. Agents reconcile once after startup, including DNS
 and other live state, then apply changed configurations on later polls without
-recreating existing interfaces.
+recreating existing interfaces. A token rejected by the control plane (HTTP
+401/403) never heals by retrying: the agent keeps the last-known-good config
+running, records the rejection in `agent-status.yaml`, reports it via
+`bntsovpn status`, and clears it after a successful fetch — re-join the node
+with a fresh invite blob to recover.
 
 ## Build from source
 

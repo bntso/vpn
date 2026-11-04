@@ -173,6 +173,7 @@ func Run(dir, addr string, allowPublic bool) error {
 	}
 	if dnsSvc != nil {
 		defer dnsSvc.Close()
+		go dnsSvc.watchRebind()
 		fmt.Printf("bntsovpn serve: private DNS on %s (UDP/TCP)\n", net.JoinHostPort(adminVPNAddr(dir).String(), "53"))
 	}
 	fmt.Printf("bntsovpn serve: listening on http://%s (dir %s)\n", addr, dir)

@@ -29,8 +29,11 @@ type dnsZone struct {
 }
 
 type dnsService struct {
+	mu       sync.Mutex
 	packet   net.PacketConn
 	listener net.Listener
+	bound    string // admin VPN address the listeners are bound to
+	dir      string // config/state directory, for zone reloads and rebinds
 	errors   chan error
 	closing  chan struct{}
 	close    sync.Once
@@ -95,37 +98,97 @@ func startDNSService(dir string) (*dnsService, error) {
 	if err != nil || z == nil {
 		return nil, err
 	}
-	addr := net.JoinHostPort(z.adminAddr.String(), "53")
+	s := &dnsService{
+		dir:     dir,
+		errors:  make(chan error, 2),
+		closing: make(chan struct{}),
+	}
+	if err := s.bind(z.adminAddr); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// bind installs listeners on the admin VPN address and starts serving them.
+// A previous generation of listeners, if any, is closed and its serve loops
+// pick up the new sockets. A failed bind leaves the previous generation
+// intact so a transient rebind failure never takes DNS down.
+func (s *dnsService) bind(addr netip.Addr) error {
+	hostPort := net.JoinHostPort(addr.String(), "53")
 	udpNetwork, tcpNetwork := "udp6", "tcp6"
-	if z.adminAddr.Is4() {
+	if addr.Is4() {
 		udpNetwork, tcpNetwork = "udp4", "tcp4"
 	}
 	lc := net.ListenConfig{Control: freebind}
-	packet, err := lc.ListenPacket(context.Background(), udpNetwork, addr)
+	packet, err := lc.ListenPacket(context.Background(), udpNetwork, hostPort)
 	if err != nil {
-		return nil, fmt.Errorf("DNS listen %s %s: %w", udpNetwork, addr, err)
+		return fmt.Errorf("DNS listen %s %s: %w", udpNetwork, hostPort, err)
 	}
-	listener, err := lc.Listen(context.Background(), tcpNetwork, addr)
+	listener, err := lc.Listen(context.Background(), tcpNetwork, hostPort)
 	if err != nil {
 		packet.Close()
-		return nil, fmt.Errorf("DNS listen %s %s: %w", tcpNetwork, addr, err)
+		return fmt.Errorf("DNS listen %s %s: %w", tcpNetwork, hostPort, err)
 	}
-	s := &dnsService{
-		packet:   packet,
-		listener: listener,
-		errors:   make(chan error, 2),
-		closing:  make(chan struct{}),
+	s.mu.Lock()
+	oldPacket, oldListener := s.packet, s.listener
+	s.packet, s.listener, s.bound = packet, listener, addr.String()
+	s.mu.Unlock()
+	if oldPacket != nil {
+		oldPacket.Close()
 	}
-	go s.serveUDP(dir)
-	go s.serveTCP(dir)
-	return s, nil
+	if oldListener != nil {
+		oldListener.Close()
+	}
+	go s.serveUDP(s.dir)
+	go s.serveTCP(s.dir)
+	return nil
+}
+
+// watchRebind reloads the zone periodically and rebinds the listeners when
+// the admin node's VPN address changed (e.g. apply re-allocated it without a
+// serve restart). Record data needs no rebind: every query reloads the zone.
+func (s *dnsService) watchRebind() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.closing:
+			return
+		case <-ticker.C:
+		}
+		z, err := loadDNSZone(s.dir)
+		if err != nil {
+			fmt.Printf("warning: could not reload private DNS zone: %v (keeping current listeners)\n", err)
+			continue
+		}
+		if z == nil {
+			fmt.Println("note: dns_domain removed from config — private DNS stays up until bntsovpn is restarted; restart it to disable DNS")
+			continue
+		}
+		s.mu.Lock()
+		bound := s.bound
+		s.mu.Unlock()
+		if z.adminAddr.String() == bound {
+			continue
+		}
+		fmt.Printf("note: admin VPN address changed from %s to %s — rebinding private DNS\n", bound, z.adminAddr)
+		if err := s.bind(z.adminAddr); err != nil {
+			fmt.Printf("warning: could not rebind private DNS to %s: %v (retrying on next check)\n", z.adminAddr, err)
+		}
+	}
 }
 
 func (s *dnsService) Close() {
 	s.close.Do(func() {
 		close(s.closing)
-		s.packet.Close()
-		s.listener.Close()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.packet != nil {
+			s.packet.Close()
+		}
+		if s.listener != nil {
+			s.listener.Close()
+		}
 	})
 }
 
@@ -141,21 +204,43 @@ func (s *dnsService) report(err error) {
 	}
 }
 
+func (s *dnsService) currentPacket() net.PacketConn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.packet
+}
+
+func (s *dnsService) currentListener() net.Listener {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listener
+}
+
 func (s *dnsService) serveUDP(dir string) {
 	buf := make([]byte, 65535)
 	for {
-		n, addr, err := s.packet.ReadFrom(buf)
+		packet := s.currentPacket()
+		if packet == nil {
+			return
+		}
+		n, addr, err := packet.ReadFrom(buf)
 		if err != nil {
-			if !errors.Is(err, net.ErrClosed) {
-				s.report(fmt.Errorf("DNS UDP listener: %w", err))
+			select {
+			case <-s.closing:
+				return
+			default:
 			}
+			if errors.Is(err, net.ErrClosed) {
+				continue // rebind: pick up the new socket
+			}
+			s.report(fmt.Errorf("DNS UDP listener: %w", err))
 			return
 		}
 		query := append([]byte(nil), buf[:n]...)
 		go func() {
 			response, err := answerDNS(dir, "udp", query)
 			if err == nil && response != nil {
-				_, _ = s.packet.WriteTo(response, addr)
+				_, _ = packet.WriteTo(response, addr)
 			}
 		}()
 	}
@@ -163,11 +248,21 @@ func (s *dnsService) serveUDP(dir string) {
 
 func (s *dnsService) serveTCP(dir string) {
 	for {
-		conn, err := s.listener.Accept()
+		listener := s.currentListener()
+		if listener == nil {
+			return
+		}
+		conn, err := listener.Accept()
 		if err != nil {
-			if !errors.Is(err, net.ErrClosed) {
-				s.report(fmt.Errorf("DNS TCP listener: %w", err))
+			select {
+			case <-s.closing:
+				return
+			default:
 			}
+			if errors.Is(err, net.ErrClosed) {
+				continue // rebind: pick up the new socket
+			}
+			s.report(fmt.Errorf("DNS TCP listener: %w", err))
 			return
 		}
 		go serveDNSConn(conn, dir)

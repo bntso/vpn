@@ -113,6 +113,11 @@ func runAgentStatus(out io.Writer, interfaceExists func(string) bool, getLivePee
 	}
 	tw := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(tw, "NODE\t%s\nINTERFACE\t%s (%s)\nADDRESS\t%s\n\n", cfg.Node, iface, state, address)
+	if status, err := agent.LoadStatus(agentStatusPath()); err != nil {
+		fmt.Fprintf(tw, "WARNING\tcould not read agent status: %v\n", err)
+	} else if !status.LastTokenRejection.IsZero() {
+		fmt.Fprintf(tw, "WARNING\tcontrol plane rejected this node's token at %s — re-run `bntsovpn join` with a fresh invite blob; the tunnel is running its last-known-good config\n", status.LastTokenRejection.Format(time.RFC3339))
+	}
 	if len(live) > 0 {
 		fmt.Fprintln(tw, "PEER\tENDPOINT\tALLOWED IPS\tHANDSHAKE\tRX\tTX")
 	} else {

@@ -62,6 +62,19 @@ func RemoveDNS(iface, dns string) (string, error) {
 	return systemDNSManager.remove(iface)
 }
 
+// ReassertDNS repairs direct resolv.conf management after another daemon
+// (dhcpcd, dhclient, NetworkManager in dns=default mode, ...) has overwritten
+// the managed file: when the direct backend is active and the file no longer
+// carries the bntsovpn marker, the bntsovpn DNS configuration is written
+// again, keeping the original backup. Cooperative backends and intact files
+// are left untouched. The returned note is non-empty when a repair happened.
+func ReassertDNS(dns, search string) (string, error) {
+	if dns == "" {
+		return "", nil
+	}
+	return systemDNSManager.reassert(dns, search)
+}
+
 func (m *dnsManager) apply(iface, dns, search string) (string, error) {
 	switch m.detectBackend() {
 	case dnsBackendResolved:
@@ -229,8 +242,15 @@ func (m *dnsManager) applyDirect(dns, search string) (string, error) {
 		return "", fmt.Errorf("read %s: %w", m.resolvConfPath, err)
 	}
 	if !directDNSManaged(contents) {
-		if err := atomicWriteDNSFile(m.backupPath, contents, mode); err != nil {
-			return "", fmt.Errorf("back up %s to %s: %w", m.resolvConfPath, m.backupPath, err)
+		// Keep an existing backup: it holds the original pre-bntsovpn file,
+		// which must survive repeated applies even while another daemon
+		// keeps rewriting resolv.conf between them.
+		if _, err := os.Stat(m.backupPath); errors.Is(err, os.ErrNotExist) {
+			if err := atomicWriteDNSFile(m.backupPath, contents, mode); err != nil {
+				return "", fmt.Errorf("back up %s to %s: %w", m.resolvConfPath, m.backupPath, err)
+			}
+		} else if err != nil {
+			return "", fmt.Errorf("stat DNS backup %s: %w", m.backupPath, err)
 		}
 	}
 	managed := directDNSMarker + "\n" + resolvconfConfig(dns, search)
@@ -238,6 +258,23 @@ func (m *dnsManager) applyDirect(dns, search string) (string, error) {
 		return "", fmt.Errorf("write %s: %w", m.resolvConfPath, err)
 	}
 	return fmt.Sprintf("no active systemd-resolved or resolvconf configuration detected — managing %s directly", m.resolvConfPath), nil
+}
+
+func (m *dnsManager) reassert(dns, search string) (string, error) {
+	if m.detectBackend() != dnsBackendDirect {
+		return "", nil
+	}
+	contents, err := os.ReadFile(m.resolvConfPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("read %s: %w", m.resolvConfPath, err)
+	}
+	if err == nil && directDNSManaged(contents) {
+		return "", nil // still managed; nothing to repair
+	}
+	if _, err := m.applyDirect(dns, search); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s was overwritten by another program — re-asserted bntsovpn DNS (original backup kept at %s)", m.resolvConfPath, m.backupPath), nil
 }
 
 func (m *dnsManager) removeDirect() (string, bool, error) {

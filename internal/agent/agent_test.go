@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,5 +67,76 @@ func TestLoadConfigNormalizesLegacyIPv6API(t *testing.T) {
 	want := "http://[fd7a:3b9c:1a2b::1]:51821"
 	if cfg.API != want {
 		t.Fatalf("API = %q, want %q", cfg.API, want)
+	}
+}
+
+func TestFetchTokenRejected(t *testing.T) {
+	tests := map[string]struct {
+		status int
+		want   bool
+	}{
+		"forbidden":    {status: http.StatusForbidden, want: true},
+		"unauthorized": {status: http.StatusUnauthorized, want: true},
+		"server error": {status: http.StatusInternalServerError, want: false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "nope", tt.status)
+			}))
+			defer server.Close()
+			cfg := &Config{Token: "test-token", API: server.URL}
+			_, err := cfg.fetch(server.Client())
+			if err == nil {
+				t.Fatal("fetch succeeded, want error")
+			}
+			if got := errors.Is(err, ErrTokenRejected); got != tt.want {
+				t.Fatalf("errors.Is(err, ErrTokenRejected) = %v, want %v (err: %v)", got, tt.want, err)
+			}
+		})
+	}
+}
+
+func TestLoadConfigSetsAgentFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.yaml")
+	if err := os.WriteFile(path, []byte("token: t\napi: http://10.13.13.1:51821\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentFile != path {
+		t.Fatalf("AgentFile = %q, want %q", cfg.AgentFile, path)
+	}
+}
+
+func TestTokenRejectedStatusLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{AgentFile: filepath.Join(dir, "agent.yaml")}
+	statusPath := filepath.Join(dir, "agent-status.yaml")
+
+	cfg.noteTokenRejected()
+	st, err := LoadStatus(statusPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.LastTokenRejection.IsZero() {
+		t.Fatal("LastTokenRejection not recorded")
+	}
+	if info, err := os.Stat(statusPath); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("status file mode = %v, err = %v, want 0600", info.Mode().Perm(), err)
+	}
+
+	cfg.clearTokenRejected()
+	st, err = LoadStatus(statusPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.LastTokenRejection.IsZero() {
+		t.Fatal("LastTokenRejection not cleared")
+	}
+	if _, err := os.Stat(statusPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("status file not removed: %v", err)
 	}
 }

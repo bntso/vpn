@@ -29,6 +29,7 @@ func legacyConfigPath() string { return filepath.Join(dir(), "config.yaml") }
 func statePath() string        { return filepath.Join(dir(), "state.yaml") }
 func renderedDir() string      { return filepath.Join(dir(), "rendered") }
 func agentConfPath() string    { return filepath.Join(dir(), "agent.yaml") }
+func agentStatusPath() string  { return filepath.Join(dir(), "agent-status.yaml") }
 
 func isRoot() bool { return os.Geteuid() == 0 }
 
