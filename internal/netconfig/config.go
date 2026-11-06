@@ -30,7 +30,8 @@ type Node struct {
 	Name       string   `hcl:"name,label" yaml:"name"`
 	Role       string   `hcl:"role,attr" yaml:"role"` // hub | spoke
 	Address    string   `hcl:"address,optional" yaml:"address,omitempty"`
-	Endpoint   string   `hcl:"endpoint,optional" yaml:"endpoint,omitempty"`       // hubs: host:port (IP or DNS)
+	Endpoint   string   `hcl:"endpoint,optional" yaml:"endpoint,omitempty"`       // hubs: one host:port (IP or DNS)
+	Endpoints  []string `hcl:"endpoints,optional" yaml:"endpoints,omitempty"`     // hubs: ordered failover host:port list
 	ListenPort int      `hcl:"listen_port,optional" yaml:"listen_port,omitempty"` // hubs: defaults to 51820
 	Expose     []string `hcl:"expose,optional" yaml:"expose,omitempty"`           // extra prefixes reachable via this node
 	NATIface   string   `hcl:"nat_iface,optional" yaml:"nat_iface,omitempty"`     // for v4 masquerade, defaults to eth0
@@ -94,6 +95,17 @@ func (c *Config) Hubs() []string {
 		}
 	}
 	return out
+}
+
+// EndpointList returns the ordered WireGuard endpoints, preferring the first.
+func (n *Node) EndpointList() []string {
+	if len(n.Endpoints) > 0 {
+		return n.Endpoints
+	}
+	if n.Endpoint != "" {
+		return []string{n.Endpoint}
+	}
+	return nil
 }
 
 // ListenPortOrDefault returns the node's WireGuard listen port.
@@ -234,11 +246,17 @@ func (c *Config) Validate() error {
 
 		switch n.Role {
 		case RoleHub:
-			if n.Endpoint == "" {
-				return fmt.Errorf("hub %q: endpoint is required (hubs must be reachable)", n.Name)
+			if n.Endpoint != "" && len(n.Endpoints) > 0 {
+				return fmt.Errorf("hub %q: endpoint and endpoints are mutually exclusive", n.Name)
 			}
-			if err := validateEndpoint(n.Endpoint); err != nil {
-				return fmt.Errorf("hub %q: %w", n.Name, err)
+			endpoints := n.EndpointList()
+			if len(endpoints) == 0 {
+				return fmt.Errorf("hub %q: endpoint or endpoints is required (hubs must be reachable)", n.Name)
+			}
+			for _, endpoint := range endpoints {
+				if err := validateEndpoint(endpoint); err != nil {
+					return fmt.Errorf("hub %q: %w", n.Name, err)
+				}
 			}
 			if n.Via != "" || len(n.Backup) > 0 {
 				return fmt.Errorf("hub %q: via/backup are only valid on spokes", n.Name)
@@ -254,8 +272,8 @@ func (c *Config) Validate() error {
 			if via.Role != RoleHub {
 				return fmt.Errorf("spoke %q: via node %q is not a hub", n.Name, n.Via)
 			}
-			if n.Endpoint != "" {
-				return fmt.Errorf("spoke %q: endpoint is only valid on hubs (spokes have no exposed port)", n.Name)
+			if len(n.EndpointList()) > 0 {
+				return fmt.Errorf("spoke %q: endpoint/endpoints are only valid on hubs (spokes have no exposed port)", n.Name)
 			}
 			for _, b := range n.Backup {
 				if b == n.Via {

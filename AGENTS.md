@@ -16,11 +16,13 @@ disappears. Every node maintains a marked `/etc/hosts` block mapping node names
 and aliases to VPN addresses; there is no DNS server or resolver integration.
 Agents poll with bearer tokens, unseal responses with their WireGuard private
 keys, reconcile once after startup, and apply changed configurations on later
-polls while preserving the last-known-good live setup on failure. Between polls
-they re-assert the managed hosts block, and they persist terminal token rejections
-(HTTP 401/403) to `agent-status.yaml` for the `status` command to surface. The `upgrade`
-command verifies the latest release checksum, atomically replaces the current
-executable and Bash completion, and restarts
+polls while preserving the last-known-good live setup on failure. Ordered hub
+endpoints support LAN-first failover: agents and the hub watchdog advance peers
+without a recent handshake to the next endpoint without recreating the interface.
+Between polls agents re-assert the managed hosts block, and they persist terminal
+token rejections (HTTP 401/403) to `agent-status.yaml` for the `status` command
+to surface. The `upgrade` command verifies the latest release checksum,
+atomically replaces the current executable and Bash completion, and restarts
 active bntsovpn services.
 
 ## Repository layout
@@ -32,7 +34,7 @@ active bntsovpn services.
 - `internal/config`: deterministic per-node WireGuard config, hosts entries, and routing policy.
 - `internal/server`: authenticated control-plane HTTP API and bind-address safety checks.
 - `internal/agent`: polling, payload unsealing, staging, and live application.
-- `internal/device`: WireGuard/netlink lifecycle, routes, managed `/etc/hosts` block, and hooks.
+- `internal/device`: WireGuard/netlink lifecycle, routes, endpoint failover, managed `/etc/hosts` block, and hooks.
 - `internal/invite`: gzip + base64 join blobs containing secrets.
 - `systemd`: shared `bntsovpn.service` template and its embedded Go source.
 - `install.sh`: unified Linux amd64/arm64 release installer.

@@ -94,7 +94,8 @@ api_port  = %d # control plane port on the admin node's VPN IP (TCP); default 51
 node "home" {
   role        = "hub" # hub or spoke
   address     = %q # optional; omit to auto-allocate an address inside subnet
-  endpoint    = "home.example.com:${wireguard_port}" # hubs only; required, publicly reachable IP/DNS host:port
+  endpoint    = "home.example.com:${wireguard_port}" # hubs only; one reachable IP/DNS host:port
+  # endpoints = ["10.0.0.10:${wireguard_port}", "home.example.com:${wireguard_port}"] # use instead of endpoint; ordered LAN-first failover
   listen_port = wireguard_port # hubs only; default 51820
   # expose    = ["192.168.1.0/24"] # hub prefixes reachable through the VPN
   # nat_iface = "eth0" # hubs with IPv4 expose entries; default eth0

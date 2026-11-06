@@ -28,7 +28,7 @@ nodes:
   - name: dr
     role: hub
     address: 10.13.13.2
-    endpoint: dr.example.com:51821
+    endpoints: [10.0.0.2:51821, dr.example.com:51821]
     listen_port: 51821
   - name: phone
     role: spoke
@@ -76,7 +76,7 @@ nodes:
 			},
 			{
 				Name: "dr", Role: RoleHub, Address: "10.13.13.2",
-				Endpoint: "dr.example.com:51821", ListenPort: 51821,
+				Endpoints: []string{"10.0.0.2:51821", "dr.example.com:51821"}, ListenPort: 51821,
 			},
 			{
 				Name: "phone", Role: RoleSpoke, Address: "10.13.13.3",

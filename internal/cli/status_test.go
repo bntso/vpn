@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,8 @@ Address = 10.13.13.2/24
 # home (hub, via)
 [Peer]
 PublicKey = %s
-Endpoint = 192.0.2.1:51820
+Endpoint = 10.0.0.10:51820
+Endpoints = 10.0.0.10:51820, 192.0.2.1:51820
 AllowedIPs = 10.13.13.0/24, 192.168.1.0/24
 PersistentKeepalive = 25
 `, privateKey, publicKey)
@@ -67,6 +69,7 @@ PersistentKeepalive = 25
 	}, func(iface string) ([]device.PeerStat, error) {
 		return []device.PeerStat{{
 			PublicKey:     publicKey,
+			Endpoint:      &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: 51820},
 			LastHandshake: time.Now().Add(-10 * time.Second),
 			ReceiveBytes:  123,
 			TransmitBytes: 456,

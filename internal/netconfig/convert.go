@@ -40,6 +40,7 @@ func renderHCL(cfg *Config) []byte {
 		nodeBody.SetAttributeValue("role", cty.StringVal(node.Role))
 		setOptionalString(nodeBody, "address", node.Address)
 		setOptionalString(nodeBody, "endpoint", node.Endpoint)
+		setOptionalStrings(nodeBody, "endpoints", node.Endpoints)
 		if node.ListenPort != 0 {
 			nodeBody.SetAttributeValue("listen_port", cty.NumberIntVal(int64(node.ListenPort)))
 		}

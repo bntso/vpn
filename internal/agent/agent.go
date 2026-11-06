@@ -387,6 +387,7 @@ func (c *Config) Run(interval time.Duration) error {
 				fmt.Println("agent: token accepted again — cleared the re-join warning")
 			}
 		}
+		c.maintainEndpoints()
 		c.maintainHosts()
 		delay := interval + time.Duration(rand.Int63n(int64(interval/4+1)))
 		if failures > 0 {
@@ -397,6 +398,22 @@ func (c *Config) Run(interval time.Duration) error {
 			delay = backoff
 		}
 		time.Sleep(delay)
+	}
+}
+
+// maintainEndpoints advances peers without a recent handshake through their
+// ordered endpoint lists. Healthy peers and all other live state are untouched.
+func (c *Config) maintainEndpoints() {
+	if os.Geteuid() != 0 || !device.InterfaceExists(c.Interface) {
+		return
+	}
+	changes, err := device.FailoverEndpoints(c.Interface, c.ConfigPath, time.Now(), 3*time.Minute)
+	if err != nil {
+		fmt.Printf("warning: could not reconcile WireGuard endpoints: %v\n", err)
+		return
+	}
+	for _, change := range changes {
+		fmt.Printf("peer %s: endpoint %v -> %s\n", change.Peer, change.From, change.To)
 	}
 }
 

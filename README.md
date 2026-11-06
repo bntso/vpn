@@ -114,8 +114,11 @@ subnet     = "10.13.13.0/24"
 admin      = "home"
 
 node "home" {
-  role        = "hub"
-  endpoint    = "home.${domain}:${wireguard_port}"
+  role = "hub"
+  endpoints = [
+    "10.0.0.10:${wireguard_port}",
+    "home.${domain}:${wireguard_port}",
+  ]
   listen_port = wireguard_port
   aliases     = ["gateway", "files"]
 }
@@ -147,8 +150,12 @@ Each `node "<name>"` block supports:
 - `role` (required): `hub` or `spoke`.
 - `address` (optional): fixed tunnel address inside `subnet`; omit it to
   auto-allocate an address.
-- `endpoint` (required for hubs): publicly reachable IP or DNS host and
-  WireGuard port in `host:port` form. It is not valid on spokes.
+- `endpoint` (hubs): one reachable IP or DNS host and WireGuard port in
+  `host:port` form. Required unless `endpoints` is set; not valid on spokes.
+- `endpoints` (hubs): ordered alternative to `endpoint`. The first entry is
+  preferred at startup; peers without a handshake for three minutes advance to
+  the next entry. Put a LAN address before the public hostname for LAN-first
+  failover. The two fields are mutually exclusive and are not valid on spokes.
 - `listen_port` (optional, hubs): WireGuard listen port; defaults to `51820`.
 - `expose` (optional, hubs): list of additional network prefixes reachable
   through this hub.
@@ -201,6 +208,13 @@ hook state. This briefly interrupts the hub's VPN connections. While running,
 `serve` checks every 30 seconds and restores `wg0` from the rendered configuration
 if the interface disappears. Agents reconcile once after startup, then apply
 changed configurations on later polls without recreating existing interfaces.
+Agents and the hub watchdog also reconcile ordered endpoint lists. The first
+endpoint is selected when the interface is configured. If its handshake is
+absent or older than three minutes, only that peer's endpoint advances to the
+next entry; routes, keys, and other peers remain untouched. A healthy fallback
+is left in place until it fails or the interface is reconfigured, avoiding
+periodic outages just to probe whether the LAN path has returned.
+
 Both paths synchronize the managed hosts block without changing resolver settings,
 and agents re-assert that block on every poll. A token rejected by the control
 plane (HTTP 401/403) never heals by retrying: the agent keeps the last-known-good

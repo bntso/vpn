@@ -96,6 +96,15 @@ func watchInterface(iface, conf string) {
 		}
 		if restored {
 			fmt.Printf("restored missing %s from the rendered admin config\n", iface)
+			continue
+		}
+		changes, err := device.FailoverEndpoints(iface, conf, time.Now(), 3*time.Minute)
+		if err != nil {
+			fmt.Printf("warning: could not reconcile WireGuard endpoints: %v\n", err)
+			continue
+		}
+		for _, change := range changes {
+			fmt.Printf("peer %s: endpoint %v -> %s\n", change.Peer, change.From, change.To)
 		}
 	}
 }

@@ -23,12 +23,13 @@ import (
 // (PrivateKey/ListenPort/[Peer] sections) plus the interface-only keys the
 // tool applies itself (Address, Hosts, PostUp/PostDown).
 type FileConfig struct {
-	Wg           *wgtypes.Config
-	Address      string   // [Interface] Address (CIDR)
-	Hosts        []string // [Interface] Hosts (address followed by names)
-	PostUp       string   // raw PostUp line, %i placeholders intact
-	PostDown     string
-	PeerComments []string // comments immediately before each [Peer] section
+	Wg            *wgtypes.Config
+	Address       string   // [Interface] Address (CIDR)
+	Hosts         []string // [Interface] Hosts (address followed by names)
+	PostUp        string   // raw PostUp line, %i placeholders intact
+	PostDown      string
+	PeerComments  []string         // comments immediately before each [Peer] section
+	PeerEndpoints [][]*net.UDPAddr // ordered endpoints for each peer
 }
 
 // ParseConfig parses the WireGuard-relevant parts of a rendered wg0.conf
@@ -52,15 +53,21 @@ func ParseFile(path string) (*FileConfig, error) {
 	fc := &FileConfig{Wg: &wgtypes.Config{}}
 	cfg := fc.Wg
 	var peer *wgtypes.PeerConfig
+	var peerEndpoints []*net.UDPAddr
 	section := ""
 	peerComment := ""
 	pendingComment := ""
 
 	flush := func() {
 		if peer != nil {
+			if len(peerEndpoints) == 0 && peer.Endpoint != nil {
+				peerEndpoints = []*net.UDPAddr{peer.Endpoint}
+			}
 			cfg.Peers = append(cfg.Peers, *peer)
 			fc.PeerComments = append(fc.PeerComments, peerComment)
+			fc.PeerEndpoints = append(fc.PeerEndpoints, peerEndpoints)
 			peer = nil
+			peerEndpoints = nil
 			peerComment = ""
 		}
 	}
@@ -135,6 +142,19 @@ func ParseFile(path string) (*FileConfig, error) {
 					return nil, fmt.Errorf("%s: peer endpoint %q: %w", path, val, err)
 				}
 				peer.Endpoint = addr
+			case "endpoints":
+				peerEndpoints = nil
+				for _, value := range strings.Split(val, ",") {
+					value = strings.TrimSpace(value)
+					addr, err := net.ResolveUDPAddr("udp", value)
+					if err != nil {
+						return nil, fmt.Errorf("%s: peer endpoint %q: %w", path, value, err)
+					}
+					peerEndpoints = append(peerEndpoints, addr)
+				}
+				if len(peerEndpoints) > 0 {
+					peer.Endpoint = peerEndpoints[0]
+				}
 			case "allowedips":
 				for _, s := range strings.Split(val, ",") {
 					_, ipnet, err := net.ParseCIDR(strings.TrimSpace(s))
@@ -194,6 +214,7 @@ func SyncConf(iface, confPath string) error {
 // PeerStat is live per-peer traffic info for the status command.
 type PeerStat struct {
 	PublicKey     wgtypes.Key
+	Endpoint      *net.UDPAddr
 	LastHandshake time.Time
 	ReceiveBytes  int64
 	TransmitBytes int64
@@ -214,6 +235,7 @@ func LivePeers(iface string) ([]PeerStat, error) {
 	for _, p := range dev.Peers {
 		out = append(out, PeerStat{
 			PublicKey:     p.PublicKey,
+			Endpoint:      p.Endpoint,
 			LastHandshake: p.LastHandshakeTime,
 			ReceiveBytes:  p.ReceiveBytes,
 			TransmitBytes: p.TransmitBytes,

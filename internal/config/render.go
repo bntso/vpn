@@ -24,7 +24,7 @@ import (
 type peerView struct {
 	Comment    string
 	PublicKey  string
-	Endpoint   string
+	Endpoints  []string
 	AllowedIPs string
 	Keepalive  int
 }
@@ -41,7 +41,7 @@ type view struct {
 	Peers      []peerView
 }
 
-var tmpl = template.Must(template.New("wg0").Parse(`# bntsovpn: node {{ .Name }} ({{ .Role }}) -- generated, do not edit
+var tmpl = template.Must(template.New("wg0").Funcs(template.FuncMap{"join": strings.Join}).Parse(`# bntsovpn: node {{ .Name }} ({{ .Role }}) -- generated, do not edit
 [Interface]
 PrivateKey = {{ .PrivateKey }}
 Address = {{ .Address }}
@@ -59,8 +59,11 @@ PostDown = {{ .PostDown }}
 # {{ .Comment }}
 [Peer]
 PublicKey = {{ .PublicKey }}
-{{- if .Endpoint }}
-Endpoint = {{ .Endpoint }}
+{{- if .Endpoints }}
+Endpoint = {{ index .Endpoints 0 }}
+{{- if gt (len .Endpoints) 1 }}
+Endpoints = {{ join .Endpoints ", " }}
+{{- end }}
 {{- end }}
 AllowedIPs = {{ .AllowedIPs }}
 {{- if .Keepalive }}
@@ -198,7 +201,7 @@ func Render(cfg *netconfig.Config, st *state.State, nodeName string) (string, er
 				AllowedIPs: strings.Join(allowed, ", "),
 			}
 			if other.Role == netconfig.RoleHub {
-				pv.Endpoint = other.Endpoint
+				pv.Endpoints = other.EndpointList()
 			}
 			v.Peers = append(v.Peers, pv)
 		}
@@ -223,7 +226,7 @@ func Render(cfg *netconfig.Config, st *state.State, nodeName string) (string, er
 			v.Peers = append(v.Peers, peerView{
 				Comment:    fmt.Sprintf("%s (hub, %s)", hub.Name, map[bool]string{true: "via", false: "backup"}[full]),
 				PublicKey:  hst.PublicKey,
-				Endpoint:   hub.Endpoint,
+				Endpoints:  hub.EndpointList(),
 				AllowedIPs: allowed,
 				Keepalive:  25,
 			})

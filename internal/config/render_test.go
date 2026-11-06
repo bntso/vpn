@@ -41,6 +41,35 @@ func TestRenderHosts(t *testing.T) {
 	}
 }
 
+func TestRenderEndpointFailover(t *testing.T) {
+	cfg, st := meshRenderFixture()
+	cfg.Nodes[0].Endpoint = ""
+	cfg.Nodes[0].Endpoints = []string{"10.0.0.10:51820", "home.example.com:51820"}
+	rendered, err := Render(cfg, st, "phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Endpoint = 10.0.0.10:51820\n",
+		"Endpoints = 10.0.0.10:51820, home.example.com:51820\n",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered config missing %q:\n%s", want, rendered)
+		}
+	}
+}
+
+func TestRenderSingleEndpointOmitsFailoverMetadata(t *testing.T) {
+	cfg, st := meshRenderFixture()
+	rendered, err := Render(cfg, st, "phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered, "Endpoints =") {
+		t.Errorf("single-endpoint config contains failover metadata:\n%s", rendered)
+	}
+}
+
 func TestAliasesChangeRenderedHosts(t *testing.T) {
 	cfg, st := meshRenderFixture()
 	before, err := Render(cfg, st, "phone")

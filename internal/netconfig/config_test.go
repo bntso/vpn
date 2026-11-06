@@ -133,3 +133,54 @@ func loadTestConfig(t *testing.T, src string) *Config {
 	}
 	return cfg
 }
+
+func TestLoadEndpointList(t *testing.T) {
+	cfg := loadTestConfig(t, `
+name   = "bntso"
+subnet = "10.13.13.0/24"
+admin  = "home"
+node "home" {
+  role      = "hub"
+  endpoints = ["10.0.0.10:51820", "home.example.com:51820"]
+}
+`)
+	home := cfg.NodeByName("home")
+	if got := strings.Join(home.EndpointList(), ", "); got != "10.0.0.10:51820, home.example.com:51820" {
+		t.Fatalf("EndpointList() = %q", got)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("endpoint list is invalid: %v", err)
+	}
+}
+
+func TestValidateEndpointFields(t *testing.T) {
+	tests := map[string]struct {
+		node    Node
+		wantErr string
+	}{
+		"both forms": {
+			node:    Node{Name: "home", Role: RoleHub, Endpoint: "home.example.com:51820", Endpoints: []string{"10.0.0.10:51820"}},
+			wantErr: "mutually exclusive",
+		},
+		"invalid fallback": {
+			node:    Node{Name: "home", Role: RoleHub, Endpoints: []string{"10.0.0.10:51820", "invalid"}},
+			wantErr: "endpoint \"invalid\"",
+		},
+		"single endpoint list": {
+			node:    Node{Name: "home", Role: RoleHub, Endpoints: []string{"10.0.0.10:51820"}},
+			wantErr: "",
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := &Config{Name: "bntso", Subnet: "10.13.13.0/24", Admin: "home", Nodes: []Node{tt.node}}
+			err := cfg.Validate()
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("Validate error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}

@@ -63,7 +63,7 @@ func runStatusWithDevice(out io.Writer, interfaceExists func(string) bool, getLi
 		if n.Via != "" {
 			via = n.Via
 		}
-		endpoint := n.Endpoint
+		endpoint := strings.Join(n.EndpointList(), ", ")
 		if endpoint == "" {
 			endpoint = "-"
 		}
@@ -143,6 +143,9 @@ func runAgentStatus(out io.Writer, interfaceExists func(string) bool, getLivePee
 		if len(live) > 0 {
 			handshake, rx, tx := "-", "-", "-"
 			if p, ok := live[peer.PublicKey.String()]; ok {
+				if p.Endpoint != nil {
+					endpoint = p.Endpoint.String()
+				}
 				handshake = ago(p.LastHandshake)
 				rx = fmt.Sprintf("%d B", p.ReceiveBytes)
 				tx = fmt.Sprintf("%d B", p.TransmitBytes)
