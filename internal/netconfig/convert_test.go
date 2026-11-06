@@ -24,7 +24,7 @@ nodes:
     listen_port: 51820
     expose: [192.168.1.0/24, 192.168.2.0/24]
     nat_iface: eth1
-    dns: 192.168.1.1
+    aliases: [gateway, files]
   - name: dr
     role: hub
     address: 10.13.13.2
@@ -72,7 +72,7 @@ nodes:
 				Name: "home", Role: RoleHub, Address: "10.13.13.1",
 				Endpoint: "home.example.com:51820", ListenPort: 51820,
 				Expose:   []string{"192.168.1.0/24", "192.168.2.0/24"},
-				NATIface: "eth1", DNS: "192.168.1.1",
+				NATIface: "eth1", Aliases: []string{"gateway", "files"},
 			},
 			{
 				Name: "dr", Role: RoleHub, Address: "10.13.13.2",

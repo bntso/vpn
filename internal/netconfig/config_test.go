@@ -16,7 +16,6 @@ wireguard_port = 51820
 name       = "bntso"
 subnet     = "10.13.13.0/24"
 admin      = "home"
-dns_domain = "bntso.internal"
 api_url    = "http://${node.home.endpoint}"
 
 node "home" {
@@ -26,7 +25,6 @@ node "home" {
   listen_port = wireguard_port
   expose      = ["192.168.1.0/24"]
   nat_iface   = "eth1"
-  dns         = "192.168.1.1"
   aliases     = ["gateway", "files"]
 }
 
@@ -52,10 +50,7 @@ node "phone" {
 	if cfg.APIURL != "http://home.example.com:51820" {
 		t.Errorf("api_url = %q, want cross-block reference", cfg.APIURL)
 	}
-	if cfg.DNSDomain != "bntso.internal" {
-		t.Errorf("dns_domain = %q", cfg.DNSDomain)
-	}
-	if home.NATIface != "eth1" || home.DNS != "192.168.1.1" || len(home.Expose) != 1 || len(home.Aliases) != 2 {
+	if home.NATIface != "eth1" || len(home.Expose) != 1 || len(home.Aliases) != 2 {
 		t.Errorf("optional home attributes were not decoded: %+v", home)
 	}
 	if cfg.NodeByName("phone").Via != "home" {
@@ -81,7 +76,7 @@ node "home" {
 		t.Errorf("optional root fields did not retain zero values: %+v", cfg)
 	}
 	home := cfg.NodeByName("home")
-	if home.Address != "" || home.ListenPort != 0 || home.NATIface != "" || home.DNS != "" || home.Via != "" || len(home.Expose) != 0 || len(home.Backup) != 0 {
+	if home.Address != "" || home.ListenPort != 0 || home.NATIface != "" || home.Via != "" || len(home.Expose) != 0 || len(home.Backup) != 0 {
 		t.Errorf("optional node fields did not retain zero values: %+v", home)
 	}
 	if err := cfg.Validate(); err != nil {

@@ -12,15 +12,13 @@ does not use `wg-quick`.
 The control plane renders per-node configuration. On startup, `serve` recreates
 the admin WireGuard interface from its rendered configuration to remove stale
 kernel state, then checks every 30 seconds and restores the interface if it
-disappears. With `dns_domain` configured, it also serves private node/alias
-DNS records on the admin VPN address and forwards other queries upstream,
-rebinding the listeners when the admin address changes. Agents poll with bearer
-tokens, unseal responses with their WireGuard private keys, reconcile once
-after startup, and apply changed configurations on later polls while preserving
-the last-known-good live setup on failure. Between polls they re-assert direct
-resolv.conf DNS management when another daemon overwrote the managed file, and
-they persist terminal token rejections (HTTP 401/403) to `agent-status.yaml`
-for the `status` command to surface. The `upgrade`
+disappears. Every node maintains a marked `/etc/hosts` block mapping node names
+and aliases to VPN addresses; there is no DNS server or resolver integration.
+Agents poll with bearer tokens, unseal responses with their WireGuard private
+keys, reconcile once after startup, and apply changed configurations on later
+polls while preserving the last-known-good live setup on failure. Between polls
+they re-assert the managed hosts block, and they persist terminal token rejections
+(HTTP 401/403) to `agent-status.yaml` for the `status` command to surface. The `upgrade`
 command verifies the latest release checksum, atomically replaces the current
 executable and Bash completion, and restarts
 active bntsovpn services.
@@ -31,10 +29,10 @@ active bntsovpn services.
 - `internal/cli`: Cobra commands and shared config-directory paths.
 - `internal/netconfig`: user-managed `config.hcl` schema, validation, and legacy YAML conversion.
 - `internal/state`: secret-bearing `state.yaml`, key/token lifecycle, and address allocation.
-- `internal/config`: deterministic per-node WireGuard config rendering and routing policy.
-- `internal/server`: authenticated control-plane HTTP API, private DNS service, and bind-address safety checks.
+- `internal/config`: deterministic per-node WireGuard config, hosts entries, and routing policy.
+- `internal/server`: authenticated control-plane HTTP API and bind-address safety checks.
 - `internal/agent`: polling, payload unsealing, staging, and live application.
-- `internal/device`: WireGuard/netlink lifecycle, routes, automatic systemd-resolved/resolvconf/direct-resolv.conf DNS registration, and hooks.
+- `internal/device`: WireGuard/netlink lifecycle, routes, managed `/etc/hosts` block, and hooks.
 - `internal/invite`: gzip + base64 join blobs containing secrets.
 - `systemd`: shared `bntsovpn.service` template and its embedded Go source.
 - `install.sh`: unified Linux amd64/arm64 release installer.
@@ -85,8 +83,11 @@ not replace the existing `bntsovpn` binary.
   down a working tunnel.
 - Avoid duplicate NAT rules when reconciling hooks; retain old `PostDown` and
   new `PostUp` handling when hooks change.
-- Device operations are privileged and mutate real interfaces, routes, DNS,
-  and iptables. Do not run `apply`, `join`, `serve`, `agent`, `upgrade`,
+- Do not add a DNS server or resolver integration. Name resolution uses only
+  the managed `/etc/hosts` block; preserve every line outside its markers,
+  validate entries before writing, and update the file atomically.
+- Device operations are privileged and mutate real interfaces, routes,
+  `/etc/hosts`, and iptables. Do not run `apply`, `join`, `serve`, `agent`, `upgrade`,
   installers, or other live network operations as part of routine verification
   unless the user explicitly requests it and provides a suitable environment.
   Upgrade tests must use local HTTP fixtures, temporary paths, and fake service

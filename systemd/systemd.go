@@ -25,7 +25,7 @@ func Unit(role Role) (string, error) {
 		restart = "always"
 		restartSec = 10
 	case Serve:
-		description = "bntsovpn control plane (config API and private DNS over WireGuard)"
+		description = "bntsovpn control plane (config API over WireGuard)"
 		restart = "on-failure"
 		restartSec = 5
 	default:

@@ -8,14 +8,13 @@ import (
 	"bntsovpn/internal/state"
 )
 
-func dnsRenderFixture() (*netconfig.Config, *state.State) {
+func meshRenderFixture() (*netconfig.Config, *state.State) {
 	cfg := &netconfig.Config{
-		Name:      "bntso",
-		Subnet:    "10.13.13.0/24",
-		Admin:     "home",
-		DNSDomain: "bntso.internal",
+		Name:   "bntso",
+		Subnet: "10.13.13.0/24",
+		Admin:  "home",
 		Nodes: []netconfig.Node{
-			{Name: "home", Role: netconfig.RoleHub, Endpoint: "home.example.com:51820", DNS: "192.0.2.1", Aliases: []string{"gateway"}},
+			{Name: "home", Role: netconfig.RoleHub, Endpoint: "home.example.com:51820", Aliases: []string{"gateway"}},
 			{Name: "phone", Role: netconfig.RoleSpoke, Via: "home"},
 		},
 	}
@@ -26,37 +25,24 @@ func dnsRenderFixture() (*netconfig.Config, *state.State) {
 	return cfg, st
 }
 
-func TestRenderPrivateDNS(t *testing.T) {
-	cfg, st := dnsRenderFixture()
+func TestRenderHosts(t *testing.T) {
+	cfg, st := meshRenderFixture()
 	rendered, err := Render(cfg, st, "phone")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"DNS = 10.13.13.1\n", "DNSSearch = bntso.internal\n"} {
+	for _, want := range []string{"Hosts = 10.13.13.1 home gateway\n", "Hosts = 10.13.13.2 phone\n"} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered config missing %q", want)
 		}
 	}
-	if strings.Contains(rendered, "DNS = 192.0.2.1") {
-		t.Error("upstream resolver was emitted instead of the admin VPN address")
+	if strings.Contains(rendered, "DNS =") || strings.Contains(rendered, "DNSSearch =") {
+		t.Errorf("rendered config contains DNS settings:\n%s", rendered)
 	}
 }
 
-func TestRenderExistingDNSWithoutPrivateDomain(t *testing.T) {
-	cfg, st := dnsRenderFixture()
-	cfg.DNSDomain = ""
-	cfg.Nodes[0].Aliases = nil
-	rendered, err := Render(cfg, st, "phone")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(rendered, "DNS = 192.0.2.1\n") || strings.Contains(rendered, "DNSSearch") {
-		t.Error("legacy DNS rendering changed")
-	}
-}
-
-func TestAliasesDoNotChangeRenderedConfigs(t *testing.T) {
-	cfg, st := dnsRenderFixture()
+func TestAliasesChangeRenderedHosts(t *testing.T) {
+	cfg, st := meshRenderFixture()
 	before, err := Render(cfg, st, "phone")
 	if err != nil {
 		t.Fatal(err)
@@ -66,13 +52,16 @@ func TestAliasesDoNotChangeRenderedConfigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before != after {
-		t.Error("alias-only change altered a rendered node config")
+	if before == after {
+		t.Fatal("alias-only change did not alter rendered hosts")
+	}
+	if !strings.Contains(after, "Hosts = 10.13.13.1 home gateway files nas\n") {
+		t.Errorf("rendered config missing updated aliases:\n%s", after)
 	}
 }
 
 func TestRenderRoutesRemoteSpokesThroughTheirPrimaryHub(t *testing.T) {
-	cfg, st := dnsRenderFixture()
+	cfg, st := meshRenderFixture()
 	cfg.Nodes = append(cfg.Nodes,
 		netconfig.Node{Name: "linode1", Role: netconfig.RoleHub, Endpoint: "linode1.example.com:51820"},
 		netconfig.Node{Name: "caster", Role: netconfig.RoleSpoke, Via: "linode1"},

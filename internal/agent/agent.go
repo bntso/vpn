@@ -353,9 +353,8 @@ func (c *Config) once(force bool) error {
 
 // Run is the daemon loop: reconcile after startup, then poll every interval
 // plus jitter and apply changed hashes. Any error leaves the last-known-good
-// config live. DNS management is re-asserted every cycle so a resolv.conf
-// overwritten by another daemon self-repairs even while the control plane is
-// unreachable.
+// config live. The managed hosts block is re-asserted every cycle so removed
+// or changed entries self-repair even while the control plane is unreachable.
 func (c *Config) Run(interval time.Duration) error {
 	if err := c.validate(); err != nil {
 		return err
@@ -388,7 +387,7 @@ func (c *Config) Run(interval time.Duration) error {
 				fmt.Println("agent: token accepted again — cleared the re-join warning")
 			}
 		}
-		c.maintainDNS()
+		c.maintainHosts()
 		delay := interval + time.Duration(rand.Int63n(int64(interval/4+1)))
 		if failures > 0 {
 			backoff := interval << min(failures-1, 4) // up to 16x
@@ -401,21 +400,13 @@ func (c *Config) Run(interval time.Duration) error {
 	}
 }
 
-// maintainDNS re-asserts direct resolv.conf management when another daemon
-// (dhcpcd, dhclient, NetworkManager) has overwritten the managed file since
-// the config was applied. Best-effort: failures are logged and retried on the
-// next cycle.
-func (c *Config) maintainDNS() {
+// maintainHosts re-asserts the managed hosts block if it was changed or removed.
+// Best-effort: failures are logged and retried on the next cycle.
+func (c *Config) maintainHosts() {
 	if os.Geteuid() != 0 || !device.InterfaceExists(c.Interface) {
 		return
 	}
-	fc, err := device.ParseFile(c.ConfigPath)
-	if err != nil || fc.DNS == "" {
-		return
-	}
-	if note, err := device.ReassertDNS(fc.DNS, fc.DNSSearch); err != nil {
-		fmt.Printf("warning: could not re-assert DNS: %v\n", err)
-	} else if note != "" {
-		fmt.Println("warning:", note)
+	if err := device.SyncHostsFromConfig(c.ConfigPath); err != nil {
+		fmt.Printf("warning: could not re-assert managed hosts: %v\n", err)
 	}
 }

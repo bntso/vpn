@@ -161,8 +161,7 @@ func RunHooks(iface, commands string) error {
 }
 
 // Recreate replaces an existing interface with a clean one built from confPath.
-// The previous configuration supplies PostDown and DNS cleanup. Cleanup happens
-// before deletion so a cleanup failure leaves the existing interface intact.
+// PostDown runs before deletion so a hook failure leaves the existing interface intact.
 func Recreate(iface, confPath string) error {
 	fc, err := ParseFile(confPath)
 	if err != nil {
@@ -173,11 +172,6 @@ func Recreate(iface, confPath string) error {
 	}
 	if err := RunHooks(iface, fc.PostDown); err != nil {
 		return err
-	}
-	if note, err := RemoveDNS(iface, fc.DNS); err != nil {
-		return err
-	} else if note != "" {
-		fmt.Println("note:", note)
 	}
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
@@ -190,10 +184,11 @@ func Recreate(iface, confPath string) error {
 }
 
 // Up brings the interface fully up from a rendered conf file: create the link
-// if needed, sync peers (no link flap), assign the address, reconcile routes
-// and DNS, then handle hooks. Hooks run only when they changed: PostUp on
-// first creation, PostDown(old)+PostUp(new) when the hook text differs from
-// the previously applied conf — re-running identical PostUp commands would
+// if needed, sync peers (no link flap), assign the address, reconcile routes,
+// handle hooks, and synchronize the managed hosts block. Hooks run only when
+// they changed: PostUp on first creation, PostDown(old)+PostUp(new) when the
+// hook text differs from the
+// previously applied conf — re-running identical PostUp commands would
 // duplicate iptables rules. oldConfPath may be "" or missing; in that case a
 // changed PostUp on an already-live interface can double-add rules (both
 // real call sites keep the previous conf on disk, so this stays theoretical).
@@ -217,12 +212,6 @@ func Up(iface, newConfPath, oldConfPath string) error {
 	if err := SyncRoutes(iface, fc.Wg); err != nil {
 		return err
 	}
-	if note, err := ApplyDNS(iface, fc.DNS, fc.DNSSearch); err != nil {
-		return err
-	} else if note != "" {
-		fmt.Println("note:", note)
-	}
-
 	var old FileConfig
 	if oldConfPath != "" {
 		if o, err := ParseFile(oldConfPath); err == nil {
@@ -233,12 +222,16 @@ func Up(iface, newConfPath, oldConfPath string) error {
 	}
 	switch {
 	case created:
-		return RunHooks(iface, fc.PostUp)
+		if err := RunHooks(iface, fc.PostUp); err != nil {
+			return err
+		}
 	case old.PostUp != fc.PostUp || old.PostDown != fc.PostDown:
 		if err := RunHooks(iface, old.PostDown); err != nil {
 			return err
 		}
-		return RunHooks(iface, fc.PostUp)
+		if err := RunHooks(iface, fc.PostUp); err != nil {
+			return err
+		}
 	}
-	return nil
+	return SyncHosts(defaultHostsPath, fc.Hosts)
 }

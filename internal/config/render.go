@@ -35,8 +35,7 @@ type view struct {
 	PrivateKey string
 	Address    string
 	ListenPort int
-	DNS        string
-	DNSSearch  string
+	Hosts      []string
 	PostUp     string
 	PostDown   string
 	Peers      []peerView
@@ -49,11 +48,8 @@ Address = {{ .Address }}
 {{- if .ListenPort }}
 ListenPort = {{ .ListenPort }}
 {{- end }}
-{{- if .DNS }}
-DNS = {{ .DNS }}
-{{- end }}
-{{- if .DNSSearch }}
-DNSSearch = {{ .DNSSearch }}
+{{- range .Hosts }}
+Hosts = {{ . }}
 {{- end }}
 {{- if .PostUp }}
 PostUp = {{ .PostUp }}
@@ -125,17 +121,19 @@ func Render(cfg *netconfig.Config, st *state.State, nodeName string) (string, er
 	if node.Role == netconfig.RoleHub {
 		v.ListenPort = node.ListenPortOrDefault()
 	}
-	if cfg.DNSDomain != "" {
-		adminState := st.Nodes[cfg.Admin]
-		if adminState == nil {
-			return "", fmt.Errorf("admin node %q has no state", cfg.Admin)
+	for _, hostNode := range cfg.Nodes {
+		hostState := st.Nodes[hostNode.Name]
+		if hostState == nil {
+			return "", fmt.Errorf("node %q has no state", hostNode.Name)
 		}
-		v.DNS = adminState.Address
-		v.DNSSearch = cfg.DNSDomain
-	} else if admin := cfg.NodeByName(cfg.Admin); admin != nil && admin.DNS != "" {
-		v.DNS = admin.DNS
+		hostAddr, err := netip.ParseAddr(hostState.Address)
+		if err != nil {
+			return "", fmt.Errorf("node %q: bad state address %q: %w", hostNode.Name, hostState.Address, err)
+		}
+		entry := []string{hostAddr.String(), hostNode.Name}
+		entry = append(entry, hostNode.Aliases...)
+		v.Hosts = append(v.Hosts, strings.Join(entry, " "))
 	}
-
 	// Masquerade for hubs exposing v4 prefixes (VPN -> LAN NAT).
 	expose, err := node.ExposePrefixes()
 	if err != nil {

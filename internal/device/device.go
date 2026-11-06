@@ -2,8 +2,8 @@
 // kernel interface via netlink, parses a rendered wg0.conf, applies peers
 // with wgctrl syncconf semantics (peers replaced, no link flap), and
 // reproduces the wg-quick side effects the mesh relies on (address, routes,
-// DNS, PostUp/PostDown NAT hooks). Callers must gate all entry points on
-// root privileges so unprivileged runs never touch the system.
+// PostUp/PostDown NAT hooks). Callers must gate all entry points on root
+// privileges so unprivileged runs never touch the system.
 package device
 
 import (
@@ -21,13 +21,12 @@ import (
 
 // FileConfig is a parsed rendered wg0.conf: the WireGuard-relevant parts
 // (PrivateKey/ListenPort/[Peer] sections) plus the interface-only keys the
-// tool applies itself (Address, DNS, DNSSearch, PostUp/PostDown).
+// tool applies itself (Address, Hosts, PostUp/PostDown).
 type FileConfig struct {
 	Wg           *wgtypes.Config
-	Address      string // [Interface] Address (CIDR)
-	DNS          string // [Interface] DNS (may be empty)
-	DNSSearch    string // [Interface] DNSSearch (may be empty)
-	PostUp       string // raw PostUp line, %i placeholders intact
+	Address      string   // [Interface] Address (CIDR)
+	Hosts        []string // [Interface] Hosts (address followed by names)
+	PostUp       string   // raw PostUp line, %i placeholders intact
 	PostDown     string
 	PeerComments []string // comments immediately before each [Peer] section
 }
@@ -109,10 +108,11 @@ func ParseFile(path string) (*FileConfig, error) {
 				cfg.ListenPort = &p
 			case "address":
 				fc.Address = val
-			case "dns":
-				fc.DNS = val
-			case "dnssearch":
-				fc.DNSSearch = val
+			case "hosts":
+				if err := validateHostsEntry(val); err != nil {
+					return nil, fmt.Errorf("%s: hosts %q: %w", path, val, err)
+				}
+				fc.Hosts = append(fc.Hosts, val)
 			case "postup":
 				fc.PostUp = val
 			case "postdown":

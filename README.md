@@ -112,13 +112,11 @@ wireguard_port = 51820
 name       = "bntso"
 subnet     = "10.13.13.0/24"
 admin      = "home"
-dns_domain = "bntso.internal"
 
 node "home" {
   role        = "hub"
   endpoint    = "home.${domain}:${wireguard_port}"
   listen_port = wireguard_port
-  dns         = "192.168.1.1"
   aliases     = ["gateway", "files"]
 }
 
@@ -143,9 +141,6 @@ Top-level settings:
 - `api_url` (optional): API address written into join blobs. It defaults to
   `http://<admin VPN IP>:<api_port>`; set a public URL when nodes must reach
   the API without the tunnel, such as during recovery from a broken config.
-- `dns_domain` (optional): private DNS zone for node names and aliases. It
-  requires `dns` on the admin node; `serve` listens on the admin VPN address at
-  UDP/TCP port 53.
 
 Each `node "<name>"` block supports:
 
@@ -159,10 +154,8 @@ Each `node "<name>"` block supports:
   through this hub.
 - `nat_iface` (optional, hubs): interface used for IPv4 masquerading of exposed
   prefixes; defaults to `eth0`.
-- `dns` (optional, admin node only): upstream resolver when `dns_domain` is
-  set; otherwise, this DNS server is pushed directly to every node.
-- `aliases` (optional): additional private DNS names for the node. Requires
-  `dns_domain`, and names and aliases must be unique across the mesh.
+- `aliases` (optional): additional `/etc/hosts` names for the node. Node names
+  and aliases must be single labels and case-insensitively unique across the mesh.
 - `via` (required for spokes): primary hub, with full routes through the VPN.
   Other hubs route the spoke's traffic through this hub rather than creating a
   direct peer without an endpoint.
@@ -173,33 +166,23 @@ YAML and are tool-managed. The daemon additionally keeps a tool-managed
 `agent-status.yaml` next to `agent.yaml` with operator-facing runtime state
 (currently: token rejections, for the `status` warning).
 
-### Private DNS
+### Hosts-based name resolution
 
-With `dns_domain` set, `serve` listens for DNS on the admin node's VPN address
-(UDP/TCP port 53). Every node name and alias resolves to its current tunnel
-address. In the example above, `home.bntso.internal`,
-`gateway.bntso.internal`, and `files.bntso.internal` all resolve to `home`.
-The search domain also makes short names such as `gateway` work.
+`bntsovpn` maintains a marked block in `/etc/hosts` on every machine. The block
+maps every node's VPN address to its node name and aliases. For the example
+above:
 
-The admin node's `dns` is the upstream resolver for names outside the private
-zone; it must not be the admin VPN address. Without `dns_domain`, `dns` retains
-its original behavior and is pushed directly to every node.
+```text
+# BEGIN bntsovpn managed hosts
+10.13.13.1 home gateway files
+10.13.13.2 phone
+# END bntsovpn managed hosts
+```
 
-Nodes automatically use `systemd-resolved` when it is active and is the system
-resolver, or `resolvconf` when it owns `/etc/resolv.conf`. If neither cooperative
-backend is active, `bntsovpn` backs up `/etc/resolv.conf` to
-`/etc/resolv.conf.bntsovpn-backup` and manages it directly. Cleanup restores the
-backup only when the managed file has not been changed by another program. The
-original backup is never overwritten once taken. While an agent runs, it
-re-asserts direct management on every poll cycle: if another daemon (such as
-dhcpcd) overwrites the managed file, the bntsovpn DNS configuration is written
-again and a warning is logged. Standalone `openresolv` is optional, not required.
-
-Port 53 must be available on the admin VPN address. Run `bntsovpn apply` after
-changing nodes or aliases; the running DNS service reads the updated records
-without a restart. If `apply` changes the admin node's VPN address, the running
-`serve` rebinds the DNS listeners on the new address within 30 seconds. Avoid
-`.local`, which is reserved for mDNS.
+All other hosts entries are preserved. Address, node-name, and alias changes
+replace the managed block when each agent applies its updated configuration.
+Do not edit inside the markers; add custom entries outside them. The service
+does not run a DNS server or modify resolver settings.
 
 Convert an existing YAML network configuration with:
 
@@ -213,14 +196,15 @@ HCL values; you can add variables and `env()` expressions afterward. The old
 YAML file is not loaded automatically.
 
 Starting or restarting `bntsovpn` recreates the admin machine's `wg0`
-from its rendered configuration, removing stale addresses, routes, peers, DNS,
-and hook state. This briefly interrupts the hub's VPN connections. While running,
+from its rendered configuration, removing stale addresses, routes, peers, and
+hook state. This briefly interrupts the hub's VPN connections. While running,
 `serve` checks every 30 seconds and restores `wg0` from the rendered configuration
-if the interface disappears. Agents reconcile once after startup, including DNS
-and other live state, then apply changed configurations on later polls without
-recreating existing interfaces. A token rejected by the control plane (HTTP
-401/403) never heals by retrying: the agent keeps the last-known-good config
-running, records the rejection in `agent-status.yaml`, reports it via
+if the interface disappears. Agents reconcile once after startup, then apply
+changed configurations on later polls without recreating existing interfaces.
+Both paths synchronize the managed hosts block without changing resolver settings,
+and agents re-assert that block on every poll. A token rejected by the control
+plane (HTTP 401/403) never heals by retrying: the agent keeps the last-known-good
+config running, records the rejection in `agent-status.yaml`, reports it via
 `bntsovpn status`, and clears it after a successful fetch — re-join the node
 with a fresh invite blob to recover.
 

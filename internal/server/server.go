@@ -1,7 +1,5 @@
-// Package server implements the pull-based control plane: a tiny HTTP API and
-// optional private DNS service bound to the admin node's WireGuard address.
-// Each node authenticates with its bearer token and can only fetch its own
-// rendered config.
+// Package server implements the pull-based control plane HTTP API. Each node
+// authenticates with its bearer token and can only fetch its own rendered config.
 package server
 
 import (
@@ -167,15 +165,6 @@ func Run(dir, addr string, allowPublic bool) error {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 	defer ln.Close()
-	dnsSvc, err := startDNSService(dir)
-	if err != nil {
-		return fmt.Errorf("start private DNS: %w", err)
-	}
-	if dnsSvc != nil {
-		defer dnsSvc.Close()
-		go dnsSvc.watchRebind()
-		fmt.Printf("bntsovpn serve: private DNS on %s (UDP/TCP)\n", net.JoinHostPort(adminVPNAddr(dir).String(), "53"))
-	}
 	fmt.Printf("bntsovpn serve: listening on http://%s (dir %s)\n", addr, dir)
 	host := addrOnly(addr)
 	if a, err := netip.ParseAddr(host); err == nil && (a.IsUnspecified() || !(a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast())) {
@@ -187,15 +176,7 @@ func Run(dir, addr string, allowPublic bool) error {
 	}
 	httpErrors := make(chan error, 1)
 	go func() { httpErrors <- http.Serve(ln, Handler(dir)) }()
-	if dnsSvc == nil {
-		return <-httpErrors
-	}
-	select {
-	case err := <-httpErrors:
-		return err
-	case err := <-dnsSvc.errors:
-		return err
-	}
+	return <-httpErrors
 }
 
 // freebind sets IP_FREEBIND / IPV6_FREEBIND so the listener can bind an

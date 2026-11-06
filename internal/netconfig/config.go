@@ -34,19 +34,17 @@ type Node struct {
 	ListenPort int      `hcl:"listen_port,optional" yaml:"listen_port,omitempty"` // hubs: defaults to 51820
 	Expose     []string `hcl:"expose,optional" yaml:"expose,omitempty"`           // extra prefixes reachable via this node
 	NATIface   string   `hcl:"nat_iface,optional" yaml:"nat_iface,omitempty"`     // for v4 masquerade, defaults to eth0
-	DNS        string   `hcl:"dns,optional" yaml:"dns,omitempty"`
-	Aliases    []string `hcl:"aliases,optional" yaml:"aliases,omitempty"` // additional private DNS names
-	Via        string   `hcl:"via,optional" yaml:"via,omitempty"`         // spokes: primary hub (full routes)
-	Backup     []string `hcl:"backup,optional" yaml:"backup,omitempty"`   // spokes: backup hubs (host routes only)
+	Aliases    []string `hcl:"aliases,optional" yaml:"aliases,omitempty"`         // additional hosts-file names
+	Via        string   `hcl:"via,optional" yaml:"via,omitempty"`                 // spokes: primary hub (full routes)
+	Backup     []string `hcl:"backup,optional" yaml:"backup,omitempty"`           // spokes: backup hubs (host routes only)
 }
 
 // Config is the root of config.hcl.
 type Config struct {
-	Name      string `hcl:"name,attr" yaml:"name"`
-	Subnet    string `hcl:"subnet,attr" yaml:"subnet"` // family of this CIDR decides the network family
-	Admin     string `hcl:"admin,attr" yaml:"admin"`   // node that runs the control plane
-	DNSDomain string `hcl:"dns_domain,optional" yaml:"dns_domain,omitempty"`
-	APIPort   int    `hcl:"api_port,optional" yaml:"api_port"`
+	Name    string `hcl:"name,attr" yaml:"name"`
+	Subnet  string `hcl:"subnet,attr" yaml:"subnet"` // family of this CIDR decides the network family
+	Admin   string `hcl:"admin,attr" yaml:"admin"`   // node that runs the control plane
+	APIPort int    `hcl:"api_port,optional" yaml:"api_port"`
 	// APIBind overrides what serve binds (host or host:port; empty = admin
 	// node's VPN address + api_port).
 	APIBind string `hcl:"api_bind,optional" yaml:"api_bind,omitempty"`
@@ -185,40 +183,25 @@ func (c *Config) Validate() error {
 	if admin.Role != RoleHub {
 		return fmt.Errorf("admin node %q must be a hub", c.Admin)
 	}
-	if c.DNSDomain == "" {
-		for _, n := range c.Nodes {
-			if len(n.Aliases) > 0 {
-				return fmt.Errorf("node %q: aliases require dns_domain", n.Name)
-			}
+	hostNames := map[string]string{}
+	for _, n := range c.Nodes {
+		if err := validateHostLabel(n.Name); err != nil {
+			return fmt.Errorf("node %q: name is not a valid hosts-file name: %w", n.Name, err)
 		}
-	} else {
-		c.DNSDomain = strings.TrimSuffix(strings.ToLower(c.DNSDomain), ".")
-		if err := validateDNSDomain(c.DNSDomain); err != nil {
-			return err
+		key := strings.ToLower(n.Name)
+		if owner, exists := hostNames[key]; exists {
+			return fmt.Errorf("node %q: name conflicts with %s", n.Name, owner)
 		}
-		if admin.DNS == "" {
-			return fmt.Errorf("dns_domain requires an upstream dns address on admin node %q", c.Admin)
-		}
-		dnsNames := map[string]string{}
-		for _, n := range c.Nodes {
-			if err := validateDNSLabel(n.Name); err != nil {
-				return fmt.Errorf("node %q: name is not a valid DNS label: %w", n.Name, err)
+		hostNames[key] = fmt.Sprintf("node %q", n.Name)
+		for _, alias := range n.Aliases {
+			if err := validateHostLabel(alias); err != nil {
+				return fmt.Errorf("node %q: alias %q is not a valid hosts-file name: %w", n.Name, alias, err)
 			}
-			key := strings.ToLower(n.Name)
-			if owner, exists := dnsNames[key]; exists {
-				return fmt.Errorf("node %q: name conflicts with %s", n.Name, owner)
+			key := strings.ToLower(alias)
+			if owner, exists := hostNames[key]; exists {
+				return fmt.Errorf("node %q: alias %q conflicts with %s", n.Name, alias, owner)
 			}
-			dnsNames[key] = fmt.Sprintf("node %q", n.Name)
-			for _, alias := range n.Aliases {
-				if err := validateDNSLabel(alias); err != nil {
-					return fmt.Errorf("node %q: alias %q is not a valid DNS label: %w", n.Name, alias, err)
-				}
-				key := strings.ToLower(alias)
-				if owner, exists := dnsNames[key]; exists {
-					return fmt.Errorf("node %q: alias %q conflicts with %s", n.Name, alias, owner)
-				}
-				dnsNames[key] = fmt.Sprintf("alias %q on node %q", alias, n.Name)
-			}
+			hostNames[key] = fmt.Sprintf("alias %q on node %q", alias, n.Name)
 		}
 	}
 
@@ -227,11 +210,6 @@ func (c *Config) Validate() error {
 		n := &c.Nodes[i]
 		if _, err := n.ExposePrefixes(); err != nil {
 			return err
-		}
-		if n.DNS != "" {
-			if _, err := netip.ParseAddr(n.DNS); err != nil {
-				return fmt.Errorf("node %q: dns %q is not a valid IP address", n.Name, n.DNS)
-			}
 		}
 		if n.Address != "" {
 			addr, err := netip.ParseAddr(n.Address)
@@ -296,22 +274,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func validateDNSDomain(domain string) error {
-	if domain == "" || len(domain) > 253 {
-		return fmt.Errorf("dns_domain %q must contain between 1 and 253 characters", domain)
-	}
-	if domain == "local" || strings.HasSuffix(domain, ".local") {
-		return fmt.Errorf("dns_domain %q must not use .local, which is reserved for mDNS", domain)
-	}
-	for _, label := range strings.Split(domain, ".") {
-		if err := validateDNSLabel(label); err != nil {
-			return fmt.Errorf("dns_domain %q: %w", domain, err)
-		}
-	}
-	return nil
-}
-
-func validateDNSLabel(label string) error {
+func validateHostLabel(label string) error {
 	if label == "" || len(label) > 63 {
 		return fmt.Errorf("label %q must contain between 1 and 63 characters", label)
 	}

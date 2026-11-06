@@ -33,10 +33,11 @@ func TestTemplateForIsValidHCL(t *testing.T) {
 				t.Errorf("generated WireGuard variable was not resolved: %+v", home)
 			}
 			template := templateFor(prefix)
-			for _, field := range []string{"dns_domain", "aliases", "dns"} {
-				if !strings.Contains(template, field) {
-					t.Errorf("generated template does not document %s", field)
-				}
+			if !strings.Contains(template, "aliases") || !strings.Contains(template, "/etc/hosts") {
+				t.Error("generated template does not document hosts-file aliases")
+			}
+			if strings.Contains(template, "dns_domain") || strings.Contains(template, "dns ") {
+				t.Error("generated template still documents removed DNS settings")
 			}
 		})
 	}
