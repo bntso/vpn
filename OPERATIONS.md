@@ -1,6 +1,6 @@
 # bntsovpn operations
 
-Current live configuration and verification checklist, recorded 2026-10-30.
+Current live configuration and verification checklist, updated 2026-11-06.
 This file contains no private keys, tokens, join blobs, or rendered WireGuard
 configuration.
 
@@ -13,16 +13,18 @@ WireGuard subnet: `fd7a:3b9c:1a2b::/64`
 API: `http://[fd7a:3b9c:1a2b::1]:51880` (an unauthenticated request should
 return HTTP 404, not a network error)
 
-| Node | Legacy name | Role | VPN address | Primary hub | Public endpoint |
+| Node | Legacy name | Role | VPN address | Primary hub | Endpoints |
 | --- | --- | --- | --- | --- | --- |
-| `home` | `pongolos` | hub/admin | `fd7a:3b9c:1a2b::1` | - | `home.bntso.com:51821` |
-| `linode1` | `server01` | hub | `fd7a:3b9c:1a2b::3` | - | `104.237.154.95:51821` |
+| `home` | `pongolos` | hub/admin | `fd7a:3b9c:1a2b::1` | - | `10.0.0.10:51821` (LAN), `home.bntso.com:51821` (internet) |
+| `linode01` | `server01` | hub | `fd7a:3b9c:1a2b::3` | - | `192.168.140.87:51821` (private), `104.237.154.95:51821` (public fallback) |
 | `ricardo-laptop` | - | spoke | `fd7a:3b9c:1a2b::2` | `home` | - |
-| `caster` | - | spoke | `fd7a:3b9c:1a2b::4` | `home` | - |
+| `caster` | - | spoke | `fd7a:3b9c:1a2b::4` | `linode01` | - |
 
-Both hubs listen on UDP 51821. `caster` intentionally uses `home`; its direct
-UDP path to `linode1` did not work. Hubs route spokes through each spoke's
-primary hub rather than creating direct peers without endpoints.
+Both hubs listen on UDP 51821. `caster` prefers `linode01`'s private Fremont
+endpoint and retains its public endpoint as fallback. The `LinodeFirewall`
+attached to `server01` must allow inbound UDP 51821 from all IPv4/IPv6 sources.
+Hubs route spokes through each spoke's primary hub rather than creating direct
+peers without endpoints.
 
 The deployed routing fix is commit `a2c945c`, released as `build-11`.
 
@@ -35,7 +37,7 @@ entries outside the markers:
 # BEGIN bntsovpn managed hosts
 fd7a:3b9c:1a2b::1 home pongolos postgres jenkins files files-vpn
 fd7a:3b9c:1a2b::2 ricardo-laptop
-fd7a:3b9c:1a2b::3 linode1 server01
+fd7a:3b9c:1a2b::3 linode01 server01
 fd7a:3b9c:1a2b::4 caster
 # END bntsovpn managed hosts
 ```
@@ -63,13 +65,22 @@ last apply recreated the service containers successfully. `files.bntso.com`
 and `files-vpn.bntso.com` return HTTP 200 through bntsovpn. Jenkins currently
 returns 502 because there is no running `jenkins` Incus instance.
 
-On `linode1`/`server01`:
+On `linode01`/`server01`:
 
 - SSH: TCP 22 on `wg0`.
 - NTP: UDP 123 on `wg0`; upstream pools are public Ubuntu NTP pools.
 - Public web services: TCP 80 and 443.
 - WireGuard: UDP 51821.
 - Tinc, until retired: UDP/TCP 655.
+
+On `caster`:
+
+- The production VM is `caster-vm-4` in Fremont (`us-west`), with public IPv4
+  `192.81.135.36`, public IPv6 `2600:3c01::2000:66ff:fe71:ce97`, and legacy
+  private IPv4 `192.168.161.176/17`.
+- The `caster-data-fremont` Block Storage volume is mounted at `/mnt/data`.
+- `caster.service`, its MariaDB/registry/Apache containers, and `bntsovpn`
+  must be active. `https://caster.zip/` should return HTTP 200.
 
 The laptop can use the managed hosts names `pongolos` and `server01` directly
 for SSH.
@@ -85,7 +96,7 @@ On `home`:
   not prove it works.
 - Keep the default-deny incoming and routed policies for other traffic.
 
-On `linode1`:
+On `linode01`:
 
 - Allow UDP 51821 from the internet for WireGuard.
 - Allow TCP 22 and UDP 123 inbound on `wg0`.
@@ -122,13 +133,13 @@ Run these checks after rebooting nodes or changing hub configuration.
    ```
 
    The hub should show recent handshakes and nonzero traffic for every node.
-   `caster` should show `home` as its primary hub.
+   `caster` should show `linode01` as its primary hub.
 
 2. Check managed hosts names and public DNS from the laptop and another node:
 
    ```sh
    getent ahostsv6 home
-   getent ahostsv6 linode1
+   getent ahostsv6 linode01
    getent ahostsv6 caster
    getent ahostsv6 pongolos
    getent ahostsv6 server01
@@ -141,13 +152,13 @@ Run these checks after rebooting nodes or changing hub configuration.
 
    ```sh
    ping -c 2 home
-   ping -c 2 linode1
+   ping -c 2 linode01
    ping -c 2 caster
    ssh pongolos true
    ssh server01 true
    ```
 
-   From `caster`, also ping `home`, `linode1`, and
+   From `caster`, also ping `home`, `linode01`, and
    `fd7a:3b9c:1a2b::2`. Use a TCP test such as SSH for cross-hub checks; ping
    can succeed while forwarded TCP is blocked.
 
@@ -203,8 +214,8 @@ Run these checks after rebooting nodes or changing hub configuration.
   changing its endpoint or primary hub, a fresh join may be required. Invites
   rotate that node's token; generate and use them one node at a time, and never
   record them here.
-- If `caster` loses its handshake, confirm it is still using `home`, not
-  `linode1`.
+- If `caster` loses its handshake, confirm it is using `linode01` and that both
+  UFW and the `LinodeFirewall` attached to `server01` allow inbound UDP 51821.
 - Do not expose or commit `state.yaml`, `agent.yaml`, rendered configs, private
   keys, tokens, or join blobs.
 
